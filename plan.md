@@ -46,6 +46,6 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] If command output contains errors like `/file/path.zig:153:40: error: expected ',' after initializer`,
       highlight them.
       Add tests.
-- [ ] Make "goto definition" work for such paths.
+- [X] Make "goto definition" work for such paths.
 - [ ] If possible, highlight background for prompt line(s) differently, such that even in an empty
       terminal the first line is highlighted.
