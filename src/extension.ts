@@ -964,6 +964,65 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	let acceptSuggestionDisposable = vscode.commands.registerCommand('terminal-editor.acceptSuggestion', async () => {
+		const activeEditor = vscode.window.activeTextEditor;
+		if (!activeEditor || activeEditor.document.uri.scheme !== 'terminal-editor') {
+			// Not in terminal editor, do default behavior
+			await vscode.commands.executeCommand('cursorRight');
+			return;
+		}
+
+		// Check if we're in command section
+		const text = activeEditor.document.getText();
+		const lines = text.split('\n');
+		const currentLine = activeEditor.selection.active.line;
+		
+		let inCommandSection = true;
+		for (let i = 0; i < currentLine; i++) {
+			if (lines[i].trim() === '') {
+				inCommandSection = false;
+				break;
+			}
+		}
+
+		if (!inCommandSection) {
+			// Not in command section, do default behavior
+			await vscode.commands.executeCommand('cursorRight');
+			return;
+		}
+
+		// Get current line and cursor position
+		const line = lines[currentLine];
+		const cursorPosition = activeEditor.selection.active.character;
+		
+		// Only suggest if cursor is at end of line
+		if (cursorPosition !== line.length) {
+			await vscode.commands.executeCommand('cursorRight');
+			return;
+		}
+
+		const currentInput = line.trim();
+		
+		// Find suggestion
+		const suggestion = findAutosuggestion(currentInput);
+		if (suggestion) {
+			// Insert the suggestion
+			const success = await activeEditor.edit(editBuilder => {
+				const position = new vscode.Position(currentLine, cursorPosition);
+				editBuilder.insert(position, suggestion);
+			});
+			
+			if (success) {
+				// Move cursor to end of inserted text
+				const newPosition = new vscode.Position(currentLine, cursorPosition + suggestion.length);
+				activeEditor.selection = new vscode.Selection(newPosition, newPosition);
+			}
+		} else {
+			// No suggestion, do default behavior
+			await vscode.commands.executeCommand('cursorRight');
+		}
+	});
+
 	context.subscriptions.push(
 		disposableProvider, 
 		disposableSemanticProvider, 
@@ -973,7 +1032,8 @@ export function activate(context: vscode.ExtensionContext) {
 		disposableTextDocumentChange,
 		disposableSelectionChange,
 		disposable, 
-		executeDisposable
+		executeDisposable,
+		acceptSuggestionDisposable
 	);
 }
 

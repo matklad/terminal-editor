@@ -20,12 +20,26 @@
       {
         "command": "terminal-editor.execute",
         "title": "terminal-editor: run"
+      },
+      {
+        "command": "terminal-editor.acceptSuggestion",
+        "title": "terminal-editor: accept autosuggestion"
       }
     ],
     "keybindings": [
       {
         "command": "terminal-editor.execute",
         "key": "cmd+enter",
+        "when": "editorTextFocus && resourceScheme == terminal-editor"
+      },
+      {
+        "command": "terminal-editor.acceptSuggestion",
+        "key": "right",
+        "when": "editorTextFocus && resourceScheme == terminal-editor"
+      },
+      {
+        "command": "terminal-editor.acceptSuggestion", 
+        "key": "end",
         "when": "editorTextFocus && resourceScheme == terminal-editor"
       }
     ]

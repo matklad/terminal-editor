@@ -66,5 +66,5 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] Make sure that timing and exit code information is the last like. When command finishes, it
       now ends up before the output.
 - [ ] Remove blinking highlights for seconds, to make it less annoying.
-- [ ] Inline suggestions show up correctly, but aren't actually accepted on arrow right/end, we
+- [X] Inline suggestions show up correctly, but aren't actually accepted on arrow right/end, we
       need to fix it.
