@@ -58,5 +58,5 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
       When command finishes, prepend exit code: `0 3s` or `2 3s`.
       The time/exit code is last line.
       Don't forget to add syntax highlighting.
-- [ ] If that can be done in not too hacky way, add fish-shell style autosuggestions from history.
+- [X] If that can be done in not too hacky way, add fish-shell style autosuggestions from history.
       History doesn't need to persist across restarts, can be in memory. 

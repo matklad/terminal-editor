@@ -3,6 +3,8 @@ import { spawn } from 'child_process';
 
 let terminalProvider: TerminalFileSystemProvider | undefined;
 let promptDecorationType: vscode.TextEditorDecorationType | undefined;
+let autosuggestionDecorationType: vscode.TextEditorDecorationType | undefined;
+let commandHistory: string[] = [];
 
 class TerminalFileSystemProvider implements vscode.FileSystemProvider {
 	private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
@@ -293,16 +295,53 @@ class TerminalCompletionProvider implements vscode.CompletionItemProvider {
 	): Promise<vscode.CompletionItem[]> {
 		const completions: vscode.CompletionItem[] = [];
 		
+		// Get the current line and check if we're in command section
+		const text = document.getText();
+		const lines = text.split('\n');
+		let inCommandSection = true;
+		for (let i = 0; i < position.line; i++) {
+			if (lines[i].trim() === '') {
+				inCommandSection = false;
+				break;
+			}
+		}
+		
+		// Only provide suggestions in command section
+		if (!inCommandSection) {
+			return completions;
+		}
+		
 		// Get the current line and word being typed
 		const line = document.lineAt(position.line);
 		const wordRange = document.getWordRangeAtPosition(position, /[^\s]+/);
 		const word = wordRange ? document.getText(wordRange) : '';
-		
-		// Only provide completions for command arguments (not the first word)
 		const lineStart = line.text.substring(0, position.character);
 		const parts = lineStart.trim().split(/\s+/);
-		if (parts.length <= 1) {
-			return completions; // Don't complete the command itself
+		
+		// If we're at the beginning of a line (first word), provide command history suggestions
+		if (parts.length <= 1 || (parts.length === 1 && word === parts[0])) {
+			// Get history suggestions
+			const currentInput = parts[0] || '';
+			for (const historyCommand of commandHistory.slice().reverse()) { // Most recent first
+				if (historyCommand !== currentInput && historyCommand.startsWith(currentInput)) {
+					const completion = new vscode.CompletionItem(
+						historyCommand,
+						vscode.CompletionItemKind.Text
+					);
+					completion.detail = 'from history';
+					completions.push(completion);
+					
+					// Limit to top 10 history suggestions
+					if (completions.length >= 10) {
+						break;
+					}
+				}
+			}
+			
+			// If this is just the first word being typed, return only history completions
+			if (parts.length <= 1) {
+				return completions;
+			}
 		}
 		
 		try {
@@ -437,6 +476,72 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 	}
 }
 
+function findAutosuggestion(currentInput: string): string | undefined {
+	if (!currentInput.trim()) {
+		return undefined;
+	}
+	
+	// Find the most recent command that starts with the current input
+	for (const historyCommand of commandHistory.slice().reverse()) {
+		if (historyCommand !== currentInput && historyCommand.startsWith(currentInput)) {
+			return historyCommand.substring(currentInput.length);
+		}
+	}
+	
+	return undefined;
+}
+
+function updateAutosuggestionDecorations(editor: vscode.TextEditor) {
+	if (!autosuggestionDecorationType || editor.document.uri.scheme !== 'terminal-editor') {
+		return;
+	}
+	
+	const decorations: vscode.DecorationOptions[] = [];
+	const text = editor.document.getText();
+	const lines = text.split('\n');
+	
+	// Only show autosuggestions in command section (before first blank line)
+	let inCommandSection = true;
+	let lineNumber = 0;
+	
+	for (const line of lines) {
+		if (inCommandSection && line.trim() === '') {
+			inCommandSection = false;
+			break;
+		}
+		
+		if (inCommandSection && lineNumber === editor.selection.active.line) {
+			// Get current line up to cursor position
+			const cursorPosition = editor.selection.active.character;
+			const currentInput = line.substring(0, cursorPosition).trim();
+			
+			// Only suggest for complete words (not partial typing)
+			if (currentInput && cursorPosition === line.length) {
+				const suggestion = findAutosuggestion(currentInput);
+				if (suggestion) {
+					const startPos = new vscode.Position(lineNumber, cursorPosition);
+					const endPos = new vscode.Position(lineNumber, cursorPosition);
+					const range = new vscode.Range(startPos, endPos);
+					
+					decorations.push({
+						range,
+						renderOptions: {
+							after: {
+								contentText: suggestion,
+								color: new vscode.ThemeColor('editorGhostText.foreground')
+							}
+						}
+					});
+				}
+			}
+		}
+		
+		lineNumber++;
+	}
+	
+	editor.setDecorations(autosuggestionDecorationType, decorations);
+}
+
 function updatePromptDecorations(editor: vscode.TextEditor) {
 	if (!promptDecorationType || editor.document.uri.scheme !== 'terminal-editor') {
 		return;
@@ -477,6 +582,11 @@ export function activate(context: vscode.ExtensionContext) {
 		isWholeLine: true
 	});
 	
+	// Create decoration type for autosuggestions
+	autosuggestionDecorationType = vscode.window.createTextEditorDecorationType({
+		// Decoration options are set per-decoration in updateAutosuggestionDecorations
+	});
+	
 	// Register the file system provider to enable editing
 	let disposableProvider = vscode.workspace.registerFileSystemProvider('terminal-editor', terminalProvider);
 	
@@ -512,6 +622,7 @@ export function activate(context: vscode.ExtensionContext) {
 	let disposableActiveEditorChange = vscode.window.onDidChangeActiveTextEditor(editor => {
 		if (editor) {
 			updatePromptDecorations(editor);
+			updateAutosuggestionDecorations(editor);
 		}
 	});
 	
@@ -520,7 +631,15 @@ export function activate(context: vscode.ExtensionContext) {
 			const editor = vscode.window.visibleTextEditors.find(e => e.document === event.document);
 			if (editor) {
 				updatePromptDecorations(editor);
+				updateAutosuggestionDecorations(editor);
 			}
+		}
+	});
+	
+	// Listen for cursor position changes to update autosuggestions
+	let disposableSelectionChange = vscode.window.onDidChangeTextEditorSelection(event => {
+		if (event.textEditor.document.uri.scheme === 'terminal-editor') {
+			updateAutosuggestionDecorations(event.textEditor);
 		}
 	});
 	
@@ -528,6 +647,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.visibleTextEditors.forEach(editor => {
 		if (editor.document.uri.scheme === 'terminal-editor') {
 			updatePromptDecorations(editor);
+			updateAutosuggestionDecorations(editor);
 		}
 	});
 	
@@ -563,8 +683,9 @@ export function activate(context: vscode.ExtensionContext) {
 			preserveFocus: false
 		});
 		
-		// Update prompt decorations for the newly opened terminal
+		// Update decorations for the newly opened terminal
 		updatePromptDecorations(editor);
+		updateAutosuggestionDecorations(editor);
 	});
 
 	let executeDisposable = vscode.commands.registerCommand('terminal-editor.execute', async () => {
@@ -603,6 +724,15 @@ export function activate(context: vscode.ExtensionContext) {
 		const commandParts = commandLine.split(/\s+/);
 		const command = commandParts[0];
 		const args = commandParts.slice(1);
+
+		// Add command to history (avoid duplicates and empty commands)
+		if (commandLine && (!commandHistory.length || commandHistory[commandHistory.length - 1] !== commandLine)) {
+			commandHistory.push(commandLine);
+			// Keep history limited to last 100 commands
+			if (commandHistory.length > 100) {
+				commandHistory.shift();
+			}
+		}
 
 		// Clear any previous output and prepare for new command execution
 		if (terminalProvider) {
@@ -732,6 +862,7 @@ export function activate(context: vscode.ExtensionContext) {
 		disposableDefinitionProvider, 
 		disposableActiveEditorChange,
 		disposableTextDocumentChange,
+		disposableSelectionChange,
 		disposable, 
 		executeDisposable
 	);
@@ -741,5 +872,9 @@ export function deactivate() {
 	if (promptDecorationType) {
 		promptDecorationType.dispose();
 		promptDecorationType = undefined;
+	}
+	if (autosuggestionDecorationType) {
+		autosuggestionDecorationType.dispose();
+		autosuggestionDecorationType = undefined;
 	}
 }
