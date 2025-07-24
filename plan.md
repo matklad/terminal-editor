@@ -68,3 +68,20 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] Remove blinking highlights for seconds, to make it less annoying.
 - [X] Inline suggestions show up correctly, but aren't actually accepted on arrow right/end, we
       need to fix it.
+- [ ] When highlighting and go-to-defintion on paths, handle `/path/file.ext:line:column` syntax even outside of error message
+- [ ] In the status output, use `3s ok` instead `0 3s` and `3s !2` instead of `2 3s`.
+- [ ] Use `String` as token type for paths for highlinghting.
+- [ ] allow '-' in absolute paths.
+- [ ] there's a bug where timing information is repeated at the start end at the end:
+
+      ```
+      8s
+      info(fuzz): Fuzz seed = 16721927544116063590
+      ... more output ...
+      zig --seed 0x75c3a63b -Z4a634d9a4462c38e fuzz -- lsm_manifest_log
+
+      1 9s
+      ```
+
+      Fix it by maintaining stout, stderr and timeing informatin logically, and materializing full
+      file text as needed. Also avoid producing more than 128KiB output (the logical stdout can be large, just don't display it all)
