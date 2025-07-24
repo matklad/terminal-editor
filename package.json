@@ -10,7 +10,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:terminal-editor.reveal"
+    "onCommand:terminal-editor.reveal",
+    "onCommand:terminal-editor.execute"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -18,6 +19,10 @@
       {
         "command": "terminal-editor.reveal",
         "title": "Reveal Terminal"
+      },
+      {
+        "command": "terminal-editor.execute",
+        "title": "Execute Command"
       }
     ]
   },
