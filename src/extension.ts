@@ -106,12 +106,12 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 						const part = parts[i];
 						
 						if (i === 0) {
-							// First part is the command - highlight as command
-							tokensBuilder.push(lineNumber, charOffset, part.length, 0, 0); // token type 0 = command
+							// First part is the command - highlight as function with bold modifier
+							tokensBuilder.push(lineNumber, charOffset, part.length, 0, 1); // token type 0 = function, modifier 1 = bold
 						} else {
 							// Check if this argument looks like a path
 							if (this.looksLikePath(part)) {
-								let tokenType = 1; // token type 1 = existing path
+								let tokenType = 1; // token type 1 = variable (existing path)
 								
 								// Check if path exists
 								if (workspaceRoot) {
@@ -122,7 +122,7 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 										}
 										
 										if (!fs.existsSync(fullPath)) {
-											tokenType = 2; // token type 2 = non-existing path
+											tokenType = 2; // token type 2 = string (non-existing path)
 										}
 									} catch (error) {
 										tokenType = 2; // Treat as non-existing if we can't check
@@ -131,8 +131,8 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 								
 								tokensBuilder.push(lineNumber, charOffset, part.length, tokenType, 0);
 							} else {
-								// Regular argument
-								tokensBuilder.push(lineNumber, charOffset, part.length, 3, 0); // token type 3 = argument
+								// Regular argument - highlight as parameter
+								tokensBuilder.push(lineNumber, charOffset, part.length, 3, 0); // token type 3 = parameter
 							}
 						}
 						
@@ -192,18 +192,18 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 				const startPos = match.index;
 				
 				if (filePath) {
-					// Highlight the file path part
+					// Highlight the file path part as property with bold modifier
 					const filePathStart = line.indexOf(filePath, startPos);
 					if (filePathStart !== -1) {
-						tokensBuilder.push(lineNumber, filePathStart, filePath.length, 4, 0); // token type 4 = error file path
+						tokensBuilder.push(lineNumber, filePathStart, filePath.length, 4, 1); // token type 4 = property, modifier 1 = bold
 					}
 					
-					// Highlight the error keyword
+					// Highlight the error keyword as keyword with italic modifier
 					const errorKeywords = ['error', 'warning', 'note', 'Error', 'WARNING', 'Note'];
 					for (const keyword of errorKeywords) {
 						const keywordIndex = line.indexOf(keyword, startPos);
 						if (keywordIndex !== -1 && keywordIndex < startPos + fullMatch.length) {
-							tokensBuilder.push(lineNumber, keywordIndex, keyword.length, 5, 0); // token type 5 = error keyword
+							tokensBuilder.push(lineNumber, keywordIndex, keyword.length, 5, 2); // token type 5 = keyword, modifier 2 = italic
 							break;
 						}
 					}
@@ -410,9 +410,10 @@ export function activate(context: vscode.ExtensionContext) {
 	let disposableProvider = vscode.workspace.registerFileSystemProvider('terminal-editor', terminalProvider);
 	
 	// Register semantic tokens provider for syntax highlighting
+	// Using standard semantic token types that work well with most themes
 	const legend = new vscode.SemanticTokensLegend(
-		['command', 'existingPath', 'nonExistingPath', 'argument', 'errorPath', 'errorKeyword'], 
-		['bold']
+		['function', 'variable', 'string', 'parameter', 'property', 'keyword'], 
+		['bold', 'italic']
 	);
 	const semanticProvider = new TerminalSemanticTokensProvider();
 	let disposableSemanticProvider = vscode.languages.registerDocumentSemanticTokensProvider(
