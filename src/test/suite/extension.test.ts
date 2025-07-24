@@ -24,7 +24,7 @@ suite('Extension Test Suite', () => {
 		);
 		
 		assert.ok(terminalEditor, 'Terminal editor should be visible');
-		assert.strictEqual(terminalEditor.document.getText(), 'echo hello world');
+		assert.strictEqual(terminalEditor.document.getText(), 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces');
 	});
 
 	test('terminal-editor.reveal is singleton', async () => {
@@ -100,5 +100,28 @@ suite('Extension Test Suite', () => {
 		
 		// Execute the command - this should not throw
 		await vscode.commands.executeCommand('terminal-editor.execute');
+	});
+
+	test('terminal-editor.execute handles multiline commands', async () => {
+		// The default terminal content is:
+		// 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces'
+		// This should execute "echo hello world" (lines until first blank line)
+		
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
+			editor.document.uri.toString() === terminalUri.toString()
+		);
+		assert.ok(terminalEditor, 'Terminal editor should be visible');
+		
+		// Make sure the terminal editor is active
+		await vscode.window.showTextDocument(terminalEditor.document);
+		
+		// Execute the multiline command - should execute "echo hello world"
+		await vscode.commands.executeCommand('terminal-editor.execute');
+		
+		// The command should execute without throwing
+		// The actual command would be "echo hello world" (joined with spaces)
 	});
 });

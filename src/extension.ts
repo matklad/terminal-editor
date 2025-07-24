@@ -7,7 +7,7 @@ class TerminalProvider implements vscode.TextDocumentContentProvider {
 	private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
 	readonly onDidChange = this._onDidChange.event;
 
-	private content = 'echo hello world';
+	private content = 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces';
 
 	provideTextDocumentContent(uri: vscode.Uri): string {
 		return this.content;
@@ -77,12 +77,22 @@ export function activate(context: vscode.ExtensionContext) {
 		const content = activeEditor.document.getText();
 		const lines = content.split('\n');
 		
-		if (lines.length === 0 || !lines[0].trim()) {
+		// Find the first blank line to determine command boundary
+		let commandLines: string[] = [];
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i].trim() === '') {
+				break;
+			}
+			commandLines.push(lines[i]);
+		}
+		
+		if (commandLines.length === 0 || commandLines.join('').trim() === '') {
 			vscode.window.showErrorMessage('No command to execute');
 			return;
 		}
 
-		const commandLine = lines[0].trim();
+		// Join all command lines with spaces (multiline commands)
+		const commandLine = commandLines.join(' ').trim();
 		const commandParts = commandLine.split(/\s+/);
 		const command = commandParts[0];
 		const args = commandParts.slice(1);
