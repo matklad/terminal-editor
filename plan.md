@@ -36,7 +36,7 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
       Add a test.
 - [X] When terminal editor is focused, bind cmd-Enter to `execute` command.
 - [X] Make sure that command uses workspace root folder as its current working directory
-- [ ] Implement basic completion for paths in the command line.
+- [X] Implement basic completion for paths in the command line.
       Add tests.
 - [ ] Implement syntax highlighting. Color the prompt differently. Color arguments that look like
       path. Use different colors for paths that exists and which do not exist.

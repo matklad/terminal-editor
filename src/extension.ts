@@ -89,6 +89,86 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 	}
 }
 
+class TerminalCompletionProvider implements vscode.CompletionItemProvider {
+	async provideCompletionItems(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		token: vscode.CancellationToken,
+		context: vscode.CompletionContext
+	): Promise<vscode.CompletionItem[]> {
+		const completions: vscode.CompletionItem[] = [];
+		
+		// Get the current line and word being typed
+		const line = document.lineAt(position.line);
+		const wordRange = document.getWordRangeAtPosition(position, /[^\s]+/);
+		const word = wordRange ? document.getText(wordRange) : '';
+		
+		// Only provide completions for command arguments (not the first word)
+		const lineStart = line.text.substring(0, position.character);
+		const parts = lineStart.trim().split(/\s+/);
+		if (parts.length <= 1) {
+			return completions; // Don't complete the command itself
+		}
+		
+		try {
+			const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			if (!workspaceRoot) {
+				return completions;
+			}
+			
+			const fs = require('fs');
+			const path = require('path');
+			
+			// Determine the directory to search in
+			let searchDir = workspaceRoot;
+			let prefix = word;
+			
+			if (word.includes('/')) {
+				const lastSlash = word.lastIndexOf('/');
+				const dirPart = word.substring(0, lastSlash);
+				prefix = word.substring(lastSlash + 1);
+				
+				// Handle relative paths
+				if (dirPart.startsWith('./')) {
+					searchDir = path.join(workspaceRoot, dirPart.substring(2));
+				} else if (dirPart.startsWith('/')) {
+					searchDir = dirPart;
+				} else {
+					searchDir = path.join(workspaceRoot, dirPart);
+				}
+			}
+			
+			// Check if directory exists
+			if (!fs.existsSync(searchDir)) {
+				return completions;
+			}
+			
+			// Read directory contents
+			const entries = fs.readdirSync(searchDir, { withFileTypes: true });
+			
+			for (const entry of entries) {
+				if (entry.name.startsWith(prefix) || prefix === '') {
+					const completion = new vscode.CompletionItem(
+						entry.name,
+						entry.isDirectory() ? vscode.CompletionItemKind.Folder : vscode.CompletionItemKind.File
+					);
+					
+					// For directories, add trailing slash
+					if (entry.isDirectory()) {
+						completion.insertText = entry.name + '/';
+					}
+					
+					completions.push(completion);
+				}
+			}
+		} catch (error) {
+			// Ignore errors and return empty completions
+		}
+		
+		return completions;
+	}
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	terminalProvider = new TerminalFileSystemProvider();
 	
@@ -102,6 +182,14 @@ export function activate(context: vscode.ExtensionContext) {
 		{ scheme: 'terminal-editor' }, 
 		semanticProvider, 
 		legend
+	);
+	
+	// Register completion provider for path completion
+	const completionProvider = new TerminalCompletionProvider();
+	let disposableCompletionProvider = vscode.languages.registerCompletionItemProvider(
+		{ scheme: 'terminal-editor' },
+		completionProvider,
+		'/', '.' // Trigger completion on / and .
 	);
 	
 	let disposable = vscode.commands.registerCommand('terminal-editor.reveal', async () => {
@@ -209,7 +297,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(disposableProvider, disposableSemanticProvider, disposable, executeDisposable);
+	context.subscriptions.push(disposableProvider, disposableSemanticProvider, disposableCompletionProvider, disposable, executeDisposable);
 }
 
 export function deactivate() {}
