@@ -152,11 +152,14 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 						}
 					}
 				} else {
-					// Process output lines - look for error patterns first, then timing information
+					// Process output lines - look for timing, error patterns, and general paths
 					// Check if this line matches timing patterns first to avoid conflicts
 					if (this.isTimingLine(line)) {
 						this.highlightTimingInLine(line, lineNumber, tokensBuilder);
 					} else {
+						// First highlight general paths in the line
+						this.highlightPathsInLine(line, lineNumber, tokensBuilder, workspaceRoot);
+						// Then highlight error patterns (which may overlap but will take precedence)
 						this.highlightErrorsInLine(line, lineNumber, tokensBuilder, workspaceRoot);
 					}
 				}
@@ -179,6 +182,58 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 			   arg.includes('\\'); // Windows paths
 	}
 	
+	private highlightPathsInLine(line: string, lineNumber: number, tokensBuilder: vscode.SemanticTokensBuilder, workspaceRoot?: string): void {
+		// Look for any path-like strings in the line
+		const fs = require('fs');
+		const path = require('path');
+		
+		// Pattern to match potential file paths
+		const pathPatterns = [
+			// Absolute paths like /path/to/file.ext or C:\path\to\file.ext
+			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)/g,
+			// Relative paths like ./path/to/file.ext or ../file.ext or src/file.ext
+			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)/g,
+			// Simple filenames with extensions
+			/([\w\-]+\.[a-zA-Z0-9]+)/g
+		];
+		
+		for (const pattern of pathPatterns) {
+			let match;
+			pattern.lastIndex = 0; // Reset regex state
+			
+			while ((match = pattern.exec(line)) !== null) {
+				const pathStr = match[1];
+				const startPos = match.index;
+				
+				if (pathStr && pathStr.length > 2) { // Avoid very short matches
+					// Check if this looks like a real file path
+					if (this.looksLikePath(pathStr)) {
+						let tokenType = 1; // Default to variable (existing path)
+						
+						// Try to determine if the path exists
+						if (workspaceRoot) {
+							try {
+								let fullPath = pathStr;
+								if (!path.isAbsolute(pathStr)) {
+									fullPath = path.join(workspaceRoot, pathStr);
+								}
+								
+								if (!fs.existsSync(fullPath)) {
+									tokenType = 2; // String type for non-existing path
+								}
+							} catch (error) {
+								tokenType = 2; // Treat as non-existing if we can't check
+							}
+						}
+						
+						// Highlight the path
+						tokensBuilder.push(lineNumber, startPos, pathStr.length, tokenType, 0);
+					}
+				}
+			}
+		}
+	}
+
 	private highlightErrorsInLine(line: string, lineNumber: number, tokensBuilder: vscode.SemanticTokensBuilder, workspaceRoot?: string): void {
 		// Look for error patterns like: /path/to/file.ext:line:col: error: message
 		// Also handle patterns like: file.ext:line:col: error: message  
@@ -412,7 +467,7 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 		const line = document.lineAt(position.line);
 		const lineText = line.text;
 		
-		// Check if we're in an error message with file path
+		// First check if we're in an error message with file path (with line/col info)
 		const errorPatterns = [
 			// Pattern: /path/to/file.ext:123:45: error: message
 			/([^\s:]+\.[a-zA-Z0-9]+):(\d+):(\d+):\s*(error|warning|note):/g,
@@ -447,22 +502,67 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 				
 				// Check if the cursor is within this error message
 				if (position.character >= startPos && position.character <= endPos) {
-					const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-					if (workspaceRoot) {
-						const path = require('path');
-						let fullPath = filePath;
+					const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+					const path = require('path');
+					let fullPath = filePath;
+					
+					// Handle relative paths
+					if (!path.isAbsolute(filePath)) {
+						fullPath = path.join(workspaceRoot, filePath);
+					}
+					
+					try {
+						const fs = require('fs');
+						if (fs.existsSync(fullPath)) {
+							const targetUri = vscode.Uri.file(fullPath);
+							const targetPosition = new vscode.Position(Math.max(0, lineNum - 1), Math.max(0, colNum - 1));
+							return new vscode.Location(targetUri, targetPosition);
+						}
+					} catch (error) {
+						// File doesn't exist or can't be accessed
+					}
+				}
+			}
+		}
+		
+		// If no error pattern matched, check for any general path under cursor
+		const fs = require('fs');
+		const path = require('path');
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+		
+		// Look for path patterns around the cursor position
+		const pathPatterns = [
+			// Absolute paths like /path/to/file.ext or C:\path\to\file.ext
+			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)/g,
+			// Relative paths like ./path/to/file.ext or ../file.ext or src/file.ext
+			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)/g,
+			// Simple filenames with extensions
+			/([\w\-]+\.[a-zA-Z0-9]+)/g
+		];
+		
+		for (const pattern of pathPatterns) {
+			let match;
+			pattern.lastIndex = 0;
+			
+			while ((match = pattern.exec(lineText)) !== null) {
+				const pathStr = match[1];
+				const startPos = match.index;
+				const endPos = startPos + pathStr.length;
+				
+				// Check if cursor is within this path
+				if (position.character >= startPos && position.character <= endPos) {
+					if (pathStr && pathStr.length > 2) {
+						let fullPath = pathStr;
 						
 						// Handle relative paths
-						if (!path.isAbsolute(filePath)) {
-							fullPath = path.join(workspaceRoot, filePath);
+						if (!path.isAbsolute(pathStr)) {
+							fullPath = path.join(workspaceRoot, pathStr);
 						}
 						
 						try {
-							const fs = require('fs');
 							if (fs.existsSync(fullPath)) {
 								const targetUri = vscode.Uri.file(fullPath);
-								const targetPosition = new vscode.Position(Math.max(0, lineNum - 1), Math.max(0, colNum - 1));
-								return new vscode.Location(targetUri, targetPosition);
+								return new vscode.Location(targetUri, new vscode.Position(0, 0));
 							}
 						} catch (error) {
 							// File doesn't exist or can't be accessed
