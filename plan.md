@@ -47,5 +47,5 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
       highlight them.
       Add tests.
 - [X] Make "goto definition" work for such paths.
-- [ ] If possible, highlight background for prompt line(s) differently, such that even in an empty
+- [X] If possible, highlight background for prompt line(s) differently, such that even in an empty
       terminal the first line is highlighted.

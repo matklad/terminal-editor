@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { spawn } from 'child_process';
 
 let terminalProvider: TerminalFileSystemProvider | undefined;
+let promptDecorationType: vscode.TextEditorDecorationType | undefined;
 
 class TerminalFileSystemProvider implements vscode.FileSystemProvider {
 	private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
@@ -365,8 +366,45 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 	}
 }
 
+function updatePromptDecorations(editor: vscode.TextEditor) {
+	if (!promptDecorationType || editor.document.uri.scheme !== 'terminal-editor') {
+		return;
+	}
+	
+	const decorations: vscode.DecorationOptions[] = [];
+	const text = editor.document.getText();
+	const lines = text.split('\n');
+	
+	// Find command lines (before first blank line)
+	let lineNumber = 0;
+	for (const line of lines) {
+		if (line.trim() === '') {
+			break; // Stop at first blank line
+		}
+		
+		// Add decoration for this command line
+		const range = new vscode.Range(lineNumber, 0, lineNumber, line.length);
+		decorations.push({ range });
+		lineNumber++;
+	}
+	
+	// If no command lines but the document is empty or has only one line, highlight the first line
+	if (decorations.length === 0 && lines.length <= 2) {
+		const range = new vscode.Range(0, 0, 0, lines[0]?.length || 0);
+		decorations.push({ range });
+	}
+	
+	editor.setDecorations(promptDecorationType, decorations);
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	terminalProvider = new TerminalFileSystemProvider();
+	
+	// Create decoration type for prompt background highlighting
+	promptDecorationType = vscode.window.createTextEditorDecorationType({
+		backgroundColor: new vscode.ThemeColor('editor.lineHighlightBackground'),
+		isWholeLine: true
+	});
 	
 	// Register the file system provider to enable editing
 	let disposableProvider = vscode.workspace.registerFileSystemProvider('terminal-editor', terminalProvider);
@@ -398,6 +436,29 @@ export function activate(context: vscode.ExtensionContext) {
 		definitionProvider
 	);
 	
+	// Register event listeners for prompt highlighting
+	let disposableActiveEditorChange = vscode.window.onDidChangeActiveTextEditor(editor => {
+		if (editor) {
+			updatePromptDecorations(editor);
+		}
+	});
+	
+	let disposableTextDocumentChange = vscode.workspace.onDidChangeTextDocument(event => {
+		if (event.document.uri.scheme === 'terminal-editor') {
+			const editor = vscode.window.visibleTextEditors.find(e => e.document === event.document);
+			if (editor) {
+				updatePromptDecorations(editor);
+			}
+		}
+	});
+	
+	// Update decorations for any already open terminal editors
+	vscode.window.visibleTextEditors.forEach(editor => {
+		if (editor.document.uri.scheme === 'terminal-editor') {
+			updatePromptDecorations(editor);
+		}
+	});
+	
 	let disposable = vscode.commands.registerCommand('terminal-editor.reveal', async () => {
 		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		
@@ -423,10 +484,13 @@ export function activate(context: vscode.ExtensionContext) {
 		
 		// Open the terminal document
 		const doc = await vscode.workspace.openTextDocument(terminalUri);
-		await vscode.window.showTextDocument(doc, {
+		const editor = await vscode.window.showTextDocument(doc, {
 			viewColumn: viewColumn,
 			preserveFocus: false
 		});
+		
+		// Update prompt decorations for the newly opened terminal
+		updatePromptDecorations(editor);
 	});
 
 	let executeDisposable = vscode.commands.registerCommand('terminal-editor.execute', async () => {
@@ -505,7 +569,21 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(disposableProvider, disposableSemanticProvider, disposableCompletionProvider, disposableDefinitionProvider, disposable, executeDisposable);
+	context.subscriptions.push(
+		disposableProvider, 
+		disposableSemanticProvider, 
+		disposableCompletionProvider, 
+		disposableDefinitionProvider, 
+		disposableActiveEditorChange,
+		disposableTextDocumentChange,
+		disposable, 
+		executeDisposable
+	);
 }
 
-export function deactivate() {}
+export function deactivate() {
+	if (promptDecorationType) {
+		promptDecorationType.dispose();
+		promptDecorationType = undefined;
+	}
+}
