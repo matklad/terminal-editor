@@ -24,7 +24,7 @@ suite('Extension Test Suite', () => {
 		);
 		
 		assert.ok(terminalEditor, 'Terminal editor should be visible');
-		assert.strictEqual(terminalEditor.document.getText(), 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces');
+		assert.strictEqual(terminalEditor.document.getText(), '');
 	});
 
 	test('terminal-editor.reveal is singleton', async () => {
@@ -90,10 +90,11 @@ suite('Extension Test Suite', () => {
 		);
 		assert.ok(terminalEditor, 'Terminal editor should be visible');
 
-		// We need to update the terminal content to have a command
-		// Since it's a virtual document, we need to work with the provider
-		// For testing, let's just test that the command can be executed
-		// The actual output testing would be complex in this test environment
+		// Add a command to execute
+		const success = await terminalEditor.edit(editBuilder => {
+			editBuilder.insert(new vscode.Position(0, 0), 'echo test');
+		});
+		assert.ok(success, 'Edit should be successful');
 		
 		// Make sure the terminal editor is active
 		await vscode.window.showTextDocument(terminalEditor.document);
@@ -103,10 +104,6 @@ suite('Extension Test Suite', () => {
 	});
 
 	test('terminal-editor.execute handles multiline commands', async () => {
-		// The default terminal content is:
-		// 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces'
-		// This should execute "echo hello world" (lines until first blank line)
-		
 		await vscode.commands.executeCommand('terminal-editor.reveal');
 		
 		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
@@ -114,6 +111,12 @@ suite('Extension Test Suite', () => {
 			editor.document.uri.toString() === terminalUri.toString()
 		);
 		assert.ok(terminalEditor, 'Terminal editor should be visible');
+		
+		// Set up multiline command content
+		const success = await terminalEditor.edit(editBuilder => {
+			editBuilder.insert(new vscode.Position(0, 0), 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces');
+		});
+		assert.ok(success, 'Edit should be successful');
 		
 		// Make sure the terminal editor is active
 		await vscode.window.showTextDocument(terminalEditor.document);

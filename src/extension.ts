@@ -7,7 +7,7 @@ class TerminalFileSystemProvider implements vscode.FileSystemProvider {
 	private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
 	readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
 
-	private content = 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces';
+	private content = '';
 
 	watch(uri: vscode.Uri, options: { readonly recursive: boolean; readonly excludes: readonly string[]; }): vscode.Disposable {
 		return new vscode.Disposable(() => {});
