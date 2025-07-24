@@ -174,12 +174,12 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 		
 		// Pattern to match potential file paths with optional line:column syntax
 		const pathPatterns = [
-			// Absolute paths like /path/to/file.ext:123:45 or /path/to/file.ext
-			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			// Absolute paths like /path/to/file.ext:123:45 or /path-to/file.ext
+			/([\/\\][\w\.\/-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
 			// Relative paths like ./path/to/file.ext:123:45 or src/file.ext:123
-			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			/(\.[\/\\][\w\.\/-]*\.[a-zA-Z0-9]+|[\w-]+[\/\\][\w\.\/-]*\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
 			// Simple filenames with extensions like file.ext:123:45
-			/([\w\-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g
+			/([\w-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g
 		];
 		
 		for (const pattern of pathPatterns) {
@@ -516,12 +516,12 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 		
 		// Look for path patterns around the cursor position with optional line:column syntax
 		const pathPatterns = [
-			// Absolute paths like /path/to/file.ext:123:45 or /path/to/file.ext
-			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			// Absolute paths like /path/to/file.ext:123:45 or /path-to/file.ext
+			/([\/\\][\w\.\/-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
 			// Relative paths like ./path/to/file.ext:123:45 or src/file.ext:123
-			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			/(\.[\/\\][\w\.\/-]*\.[a-zA-Z0-9]+|[\w-]+[\/\\][\w\.\/-]*\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
 			// Simple filenames with extensions like file.ext:123:45
-			/([\w\-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g
+			/([\w-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g
 		];
 		
 		for (const pattern of pathPatterns) {
