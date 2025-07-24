@@ -68,9 +68,12 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 	async provideDocumentSemanticTokens(document: vscode.TextDocument): Promise<vscode.SemanticTokens> {
 		const tokensBuilder = new vscode.SemanticTokensBuilder();
 		
-		// For terminal, we'll highlight the first line(s) before the blank line as commands
 		const text = document.getText();
 		const lines = text.split('\n');
+		
+		const fs = require('fs');
+		const path = require('path');
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 		
 		let lineNumber = 0;
 		for (const line of lines) {
@@ -78,14 +81,74 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 				break; // Stop at first blank line
 			}
 			
-			// Highlight the entire command line as a command
 			if (line.trim().length > 0) {
-				tokensBuilder.push(lineNumber, 0, line.length, 0, 0); // token type 0 = command
+				const parts = line.trim().split(/\s+/);
+				let charOffset = 0;
+				
+				// Find the start of the first non-whitespace character
+				const leadingWhitespace = line.match(/^\s*/)?.[0]?.length || 0;
+				charOffset = leadingWhitespace;
+				
+				for (let i = 0; i < parts.length; i++) {
+					const part = parts[i];
+					
+					if (i === 0) {
+						// First part is the command - highlight as command
+						tokensBuilder.push(lineNumber, charOffset, part.length, 0, 0); // token type 0 = command
+					} else {
+						// Check if this argument looks like a path
+						if (this.looksLikePath(part)) {
+							let tokenType = 1; // token type 1 = existing path
+							
+							// Check if path exists
+							if (workspaceRoot) {
+								try {
+									let fullPath = part;
+									if (!path.isAbsolute(part)) {
+										fullPath = path.join(workspaceRoot, part);
+									}
+									
+									if (!fs.existsSync(fullPath)) {
+										tokenType = 2; // token type 2 = non-existing path
+									}
+								} catch (error) {
+									tokenType = 2; // Treat as non-existing if we can't check
+								}
+							}
+							
+							tokensBuilder.push(lineNumber, charOffset, part.length, tokenType, 0);
+						} else {
+							// Regular argument
+							tokensBuilder.push(lineNumber, charOffset, part.length, 3, 0); // token type 3 = argument
+						}
+					}
+					
+					charOffset += part.length;
+					
+					// Skip whitespace to next part
+					if (i < parts.length - 1) {
+						const remainingLine = line.substring(charOffset);
+						const nextWhitespace = remainingLine.match(/^\s+/)?.[0]?.length || 0;
+						charOffset += nextWhitespace;
+					}
+				}
 			}
 			lineNumber++;
 		}
 		
 		return tokensBuilder.build();
+	}
+	
+	private looksLikePath(arg: string): boolean {
+		// Consider something a path if it:
+		// - Contains a slash
+		// - Starts with . or ..
+		// - Ends with common file extensions
+		// - Contains path-like patterns
+		return arg.includes('/') || 
+			   arg.startsWith('.') || 
+			   /\.(js|ts|json|md|txt|py|java|c|cpp|h|html|css|xml|yml|yaml)$/i.test(arg) ||
+			   arg.includes('\\'); // Windows paths
 	}
 }
 
@@ -176,7 +239,10 @@ export function activate(context: vscode.ExtensionContext) {
 	let disposableProvider = vscode.workspace.registerFileSystemProvider('terminal-editor', terminalProvider);
 	
 	// Register semantic tokens provider for syntax highlighting
-	const legend = new vscode.SemanticTokensLegend(['command'], ['bold']);
+	const legend = new vscode.SemanticTokensLegend(
+		['command', 'existingPath', 'nonExistingPath', 'argument'], 
+		['bold']
+	);
 	const semanticProvider = new TerminalSemanticTokensProvider();
 	let disposableSemanticProvider = vscode.languages.registerDocumentSemanticTokensProvider(
 		{ scheme: 'terminal-editor' }, 
