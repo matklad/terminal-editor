@@ -475,17 +475,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Check if we have an active editor to determine splitting
 		const activeEditor = vscode.window.activeTextEditor;
-		let viewColumn = vscode.ViewColumn.Two;
 		
-		if (!activeEditor) {
-			// No active editor, open in first column and then split
-			viewColumn = vscode.ViewColumn.One;
+		if (activeEditor && activeEditor.viewColumn === vscode.ViewColumn.One) {
+			// Move the active editor to the right pane to make room for terminal on the left
+			await vscode.window.showTextDocument(activeEditor.document, {
+				viewColumn: vscode.ViewColumn.Two,
+				preserveFocus: true
+			});
 		}
 		
-		// Open the terminal document
+		// Always open terminal in the left pane (column one)
 		const doc = await vscode.workspace.openTextDocument(terminalUri);
 		const editor = await vscode.window.showTextDocument(doc, {
-			viewColumn: viewColumn,
+			viewColumn: vscode.ViewColumn.One,
 			preserveFocus: false
 		});
 		

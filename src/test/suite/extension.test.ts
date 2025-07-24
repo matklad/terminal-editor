@@ -41,22 +41,29 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(terminalEditors.length, 1, 'Should only have one terminal editor');
 	});
 
-	test('terminal-editor.reveal opens in second column when editor exists', async () => {
+	test('terminal-editor.reveal opens in first column and moves existing editor to second', async () => {
 		// First open a regular document
 		const doc = await vscode.workspace.openTextDocument({ content: 'test', language: 'plaintext' });
-		await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+		const originalEditor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
 		
 		// Then reveal terminal
 		await vscode.commands.executeCommand('terminal-editor.reveal');
 		
-		// Check that terminal is in second column
+		// Check that terminal is in first column
 		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		const terminalEditor = vscode.window.visibleTextEditors.find(editor => 
 			editor.document.uri.toString() === terminalUri.toString()
 		);
 		
 		assert.ok(terminalEditor, 'Terminal editor should be visible');
-		assert.strictEqual(terminalEditor.viewColumn, vscode.ViewColumn.Two);
+		assert.strictEqual(terminalEditor.viewColumn, vscode.ViewColumn.One);
+		
+		// Check that the original editor was moved to second column
+		const movedEditor = vscode.window.visibleTextEditors.find(editor => 
+			editor.document === doc
+		);
+		assert.ok(movedEditor, 'Original editor should still be visible');
+		assert.strictEqual(movedEditor.viewColumn, vscode.ViewColumn.Two);
 	});
 
 	test('terminal-editor.execute command is registered', async () => {
