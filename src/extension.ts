@@ -842,17 +842,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Clear any previous output and prepare for new command execution
 		if (terminalProvider) {
-			// Clear everything after the command lines, keeping only the command
-			const newContent = commandLines.join('\n') + '\n\n';
-			terminalProvider.updateContent(newContent);
-			
 			// Use workspace root as current working directory, fallback to process.cwd() for tests
 			const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
 			
 			// Track timing for the command execution
 			const startTime = Date.now();
 			let timingInterval: NodeJS.Timeout | undefined;
-			let timingLineAdded = false;
 			
 			const childProcess = spawn(command, args, { 
 				stdio: ['pipe', 'pipe', 'pipe'],
@@ -860,9 +855,12 @@ export function activate(context: vscode.ExtensionContext) {
 				cwd: workspaceRoot
 			});
 			
-			let stdoutBuffer = '';
-			let stderrBuffer = '';
-			let hasOutput = false;
+			// Logical buffers for output management
+			let stdoutData = '';
+			let stderrData = '';
+			let isComplete = false;
+			let exitCode = 0;
+			const MAX_OUTPUT_SIZE = 128 * 1024; // 128KiB limit
 			
 			// Function to format elapsed time
 			const formatElapsedTime = (milliseconds: number): string => {
@@ -883,51 +881,61 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			};
 			
-			// Update timing display every 2 seconds to reduce visual noise
-			timingInterval = setInterval(() => {
+			// Function to materialize the complete terminal content
+			const updateTerminalContent = () => {
 				const elapsed = Date.now() - startTime;
 				const timeStr = formatElapsedTime(elapsed);
 				
-				if (!hasOutput) {
-					// If no output yet, show timing where it will be at the end
-					const currentContent = terminalProvider!.getContent();
-					if (!timingLineAdded) {
-						terminalProvider!.appendContent('\n' + timeStr + '\n');
-						timingLineAdded = true;
-					} else {
-						// Update the timing line
-						const lines = currentContent.split('\n');
-						for (let i = lines.length - 1; i >= 0; i--) {
-							if (/^\d+[hms]/.test(lines[i]) || lines[i].startsWith('Running...')) {
-								lines[i] = timeStr;
-								break;
-							}
-						}
-						terminalProvider!.updateContent(lines.join('\n'));
+				let content = commandLines.join('\n') + '\n\n';
+				
+				// Add stdout (truncated if necessary)
+				if (stdoutData) {
+					let stdout = stdoutData;
+					if (stdout.length > MAX_OUTPUT_SIZE) {
+						stdout = stdout.substring(0, MAX_OUTPUT_SIZE) + '\n... (output truncated)\n';
 					}
+					content += stdout;
+				}
+				
+				// Add stderr (truncated if necessary)
+				if (stderrData) {
+					let stderr = stderrData;
+					if (stderr.length > MAX_OUTPUT_SIZE) {
+						stderr = stderr.substring(0, MAX_OUTPUT_SIZE) + '\n... (stderr truncated)\n';
+					}
+					content += stderr;
+				}
+				
+				// Add timing information
+				if (isComplete) {
+					// Final status line
+					const statusLine = exitCode === 0 ? `${timeStr} ok` : `${timeStr} !${exitCode}`;
+					content += '\n' + statusLine + '\n';
+				} else if (stdoutData || stderrData) {
+					// Don't show running timing if there's output
+				} else {
+					// Show running timing only if no output yet
+					content += timeStr + '\n';
+				}
+				
+				terminalProvider!.updateContent(content);
+			};
+			
+			// Update timing display every 2 seconds to reduce visual noise
+			timingInterval = setInterval(() => {
+				if (!isComplete) {
+					updateTerminalContent();
 				}
 			}, 2000);
 
 			childProcess.stdout.on('data', (data: Buffer) => {
-				stdoutBuffer += data.toString();
-				hasOutput = true;
-				
-				// Remove timing line if it exists, we'll add it at the end
-				if (timingLineAdded) {
-					const currentContent = terminalProvider!.getContent();
-					const lines = currentContent.split('\n');
-					const filteredLines = lines.filter(line => 
-						!/^\d+[hms]/.test(line) && !line.startsWith('Running...')
-					);
-					terminalProvider!.updateContent(filteredLines.join('\n'));
-					timingLineAdded = false;
-				}
-				
-				terminalProvider!.appendContent(data.toString());
+				stdoutData += data.toString();
+				updateTerminalContent();
 			});
 
 			childProcess.stderr.on('data', (data: Buffer) => {
-				stderrBuffer += data.toString();
+				stderrData += data.toString();
+				updateTerminalContent();
 			});
 
 			childProcess.on('close', (code) => {
@@ -936,19 +944,9 @@ export function activate(context: vscode.ExtensionContext) {
 					clearInterval(timingInterval);
 				}
 				
-				// Add stderr output if any
-				if (stderrBuffer) {
-					terminalProvider!.appendContent(stderrBuffer);
-				}
-				
-				// Calculate final elapsed time and add exit code line at the very end
-				const elapsed = Date.now() - startTime;
-				const timeStr = formatElapsedTime(elapsed);
-				const exitCode = code || 0;
-				const exitLine = exitCode === 0 ? `${timeStr} ok` : `${timeStr} !${exitCode}`;
-				
-				// Always append the final timing as the last line
-				terminalProvider!.appendContent('\n' + exitLine + '\n');
+				isComplete = true;
+				exitCode = code || 0;
+				updateTerminalContent();
 			});
 
 			childProcess.on('error', (error) => {
@@ -957,13 +955,10 @@ export function activate(context: vscode.ExtensionContext) {
 					clearInterval(timingInterval);
 				}
 				
-				terminalProvider!.appendContent(`Error: ${error.message}\n`);
-				
-				// Add error exit code at the very end
-				const elapsed = Date.now() - startTime;
-				const timeStr = formatElapsedTime(elapsed);
-				const exitLine = `${timeStr} !1`;
-				terminalProvider!.appendContent('\n' + exitLine + '\n');
+				stderrData += `Error: ${error.message}\n`;
+				isComplete = true;
+				exitCode = 1;
+				updateTerminalContent();
 			});
 		}
 	});
