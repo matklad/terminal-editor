@@ -295,8 +295,8 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 	private isTimingLine(line: string): boolean {
 		const trimmedLine = line.trim();
 		const timingPatterns = [
-			// Pattern: exit code + time (e.g., "0 3s", "1 1m 30s")
-			/^(\d+)\s+((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
+			// Pattern: time + status (e.g., "3s ok", "5m 30s !2")
+			/^((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))\s+(ok|!\d+)$/,
 			// Pattern: just time (e.g., "1h 2m 3s", "5m 30s", "42s")
 			/^((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
 			// Pattern: "Running..."
@@ -307,12 +307,11 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 	}
 
 	private highlightTimingInLine(line: string, lineNumber: number, tokensBuilder: vscode.SemanticTokensBuilder): void {
-		// Look for timing patterns like: "1h 2m 3s", "5m 30s", "42s", "Running..."
-		// And exit code patterns like: "0 3s", "1 1m 30s"
+		// Look for timing patterns like: "3s ok", "5m 30s !2", "1h 2m 3s", "Running..."
 		
 		const timingPatterns = [
-			// Pattern: exit code + time (e.g., "0 3s", "1 1m 30s")
-			/^(\d+)\s+((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
+			// Pattern: time + status (e.g., "3s ok", "5m 30s !2")
+			/^((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))\s+(ok|!\d+)$/,
 			// Pattern: just time (e.g., "1h 2m 3s", "5m 30s", "42s")
 			/^((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
 			// Pattern: "Running..."
@@ -327,16 +326,17 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 				
 				if (startPos !== -1) {
 					if (match[2]) {
-						// Exit code + time pattern
-						const exitCode = match[1];
-						const timeStr = match[2];
-						const exitCodeStart = startPos + line.substring(startPos).indexOf(exitCode);
+						// Time + status pattern (e.g., "3s ok", "5m 30s !2")
+						const timeStr = match[1];
+						const statusStr = match[2];
 						const timeStart = startPos + line.substring(startPos).indexOf(timeStr);
+						const statusStart = startPos + line.substring(startPos).indexOf(statusStr);
 						
-						// Highlight exit code as number
-						tokensBuilder.push(lineNumber, exitCodeStart, exitCode.length, 0, 0); // function type for exit code
 						// Highlight time as string with italic
 						tokensBuilder.push(lineNumber, timeStart, timeStr.length, 2, 2); // string type with italic modifier
+						// Highlight status as function (ok) or keyword (!code)
+						const tokenType = statusStr === 'ok' ? 0 : 5; // function for ok, keyword for error codes
+						tokensBuilder.push(lineNumber, statusStart, statusStr.length, tokenType, 0);
 					} else if (match[1].includes('h') || match[1].includes('m') || match[1].includes('s')) {
 						// Time-only pattern
 						const timeStr = match[1];
@@ -974,7 +974,8 @@ export function activate(context: vscode.ExtensionContext) {
 				// Calculate final elapsed time and add exit code line at the very end
 				const elapsed = Date.now() - startTime;
 				const timeStr = formatElapsedTime(elapsed);
-				const exitLine = `${code || 0} ${timeStr}`;
+				const exitCode = code || 0;
+				const exitLine = exitCode === 0 ? `${timeStr} ok` : `${timeStr} !${exitCode}`;
 				
 				// Always append the final timing as the last line
 				terminalProvider!.appendContent('\n' + exitLine + '\n');
@@ -991,7 +992,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// Add error exit code at the very end
 				const elapsed = Date.now() - startTime;
 				const timeStr = formatElapsedTime(elapsed);
-				const exitLine = `1 ${timeStr}`;
+				const exitLine = `${timeStr} !1`;
 				terminalProvider!.appendContent('\n' + exitLine + '\n');
 			});
 		}
