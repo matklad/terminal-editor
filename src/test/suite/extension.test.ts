@@ -151,4 +151,38 @@ suite('Extension Test Suite', () => {
 		assert.notStrictEqual(newContent, originalContent, 'Content should have changed');
 		assert.ok(newContent.includes('ls -la'), 'New content should contain the edited command');
 	});
+
+	test('terminal-editor.execute runs commands from workspace root', async () => {
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
+		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
+			editor.document.uri.toString() === terminalUri.toString()
+		);
+		assert.ok(terminalEditor, 'Terminal editor should be visible');
+		
+		// Change content to run pwd command
+		const success = await terminalEditor.edit(editBuilder => {
+			const lastLine = terminalEditor!.document.lineAt(terminalEditor!.document.lineCount - 1);
+			const fullRange = new vscode.Range(0, 0, terminalEditor!.document.lineCount - 1, lastLine.text.length);
+			editBuilder.replace(fullRange, 'pwd');
+		});
+		assert.ok(success, 'Edit should be successful');
+		
+		// Make sure the terminal editor is active
+		await vscode.window.showTextDocument(terminalEditor.document);
+		
+		// Execute the pwd command
+		await vscode.commands.executeCommand('terminal-editor.execute');
+		
+		// Wait a bit for the command to execute and output to be appended
+		await new Promise(resolve => setTimeout(resolve, 100));
+		
+		// Check that the output contains the workspace path
+		const finalContent = terminalEditor.document.getText();
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (workspaceRoot) {
+			assert.ok(finalContent.includes(workspaceRoot), 'Output should contain workspace root path');
+		}
+	});
 });

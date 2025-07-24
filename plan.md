@@ -35,7 +35,7 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] Make the terminal editor editable, so that the user can actually change the command.
       Add a test.
 - [X] When terminal editor is focused, bind cmd-Enter to `execute` command.
-- [ ] Make sure that command uses workspace root folder as its current working directory
+- [X] Make sure that command uses workspace root folder as its current working directory
 - [ ] Implement basic completion for paths in the command line.
       Add tests.
 - [ ] Implement syntax highlighting. Color the prompt differently. Color arguments that look like

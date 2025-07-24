@@ -176,9 +176,13 @@ export function activate(context: vscode.ExtensionContext) {
 		if (terminalProvider) {
 			terminalProvider.appendContent('\n\n');
 			
+			// Use workspace root as current working directory
+			const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			
 			const process = spawn(command, args, { 
 				stdio: ['pipe', 'pipe', 'pipe'],
-				shell: false
+				shell: false,
+				cwd: workspaceRoot
 			});
 
 			let stdoutBuffer = '';
