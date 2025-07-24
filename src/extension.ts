@@ -69,6 +69,10 @@ class TerminalFileSystemProvider implements vscode.FileSystemProvider {
 		const uri = vscode.Uri.parse('terminal-editor:/terminal');
 		this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
 	}
+	
+	getContent(): string {
+		return this.content;
+	}
 }
 
 class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
@@ -146,8 +150,13 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 						}
 					}
 				} else {
-					// Process output lines - look for error patterns
-					this.highlightErrorsInLine(line, lineNumber, tokensBuilder, workspaceRoot);
+					// Process output lines - look for error patterns first, then timing information
+					// Check if this line matches timing patterns first to avoid conflicts
+					if (this.isTimingLine(line)) {
+						this.highlightTimingInLine(line, lineNumber, tokensBuilder);
+					} else {
+						this.highlightErrorsInLine(line, lineNumber, tokensBuilder, workspaceRoot);
+					}
 				}
 			}
 			lineNumber++;
@@ -208,6 +217,68 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 						}
 					}
 				}
+			}
+		}
+	}
+	
+	private isTimingLine(line: string): boolean {
+		const trimmedLine = line.trim();
+		const timingPatterns = [
+			// Pattern: exit code + time (e.g., "0 3s", "1 1m 30s")
+			/^(\d+)\s+((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
+			// Pattern: just time (e.g., "1h 2m 3s", "5m 30s", "42s")
+			/^((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
+			// Pattern: "Running..."
+			/^(Running\.\.\.)$/
+		];
+		
+		return timingPatterns.some(pattern => pattern.test(trimmedLine));
+	}
+
+	private highlightTimingInLine(line: string, lineNumber: number, tokensBuilder: vscode.SemanticTokensBuilder): void {
+		// Look for timing patterns like: "1h 2m 3s", "5m 30s", "42s", "Running..."
+		// And exit code patterns like: "0 3s", "1 1m 30s"
+		
+		const timingPatterns = [
+			// Pattern: exit code + time (e.g., "0 3s", "1 1m 30s")
+			/^(\d+)\s+((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
+			// Pattern: just time (e.g., "1h 2m 3s", "5m 30s", "42s")
+			/^((?:\d+h\s*)?(?:\d+m\s*)?(?:\d+s))$/,
+			// Pattern: "Running..."
+			/^(Running\.\.\.)$/
+		];
+		
+		for (const pattern of timingPatterns) {
+			const match = pattern.exec(line.trim());
+			if (match) {
+				const fullMatch = match[0];
+				const startPos = line.indexOf(fullMatch);
+				
+				if (startPos !== -1) {
+					if (match[2]) {
+						// Exit code + time pattern
+						const exitCode = match[1];
+						const timeStr = match[2];
+						const exitCodeStart = startPos + line.substring(startPos).indexOf(exitCode);
+						const timeStart = startPos + line.substring(startPos).indexOf(timeStr);
+						
+						// Highlight exit code as number
+						tokensBuilder.push(lineNumber, exitCodeStart, exitCode.length, 0, 0); // function type for exit code
+						// Highlight time as string with italic
+						tokensBuilder.push(lineNumber, timeStart, timeStr.length, 2, 2); // string type with italic modifier
+					} else if (match[1].includes('h') || match[1].includes('m') || match[1].includes('s')) {
+						// Time-only pattern
+						const timeStr = match[1];
+						const timeStart = startPos + line.substring(startPos).indexOf(timeStr);
+						tokensBuilder.push(lineNumber, timeStart, timeStr.length, 2, 2); // string type with italic modifier
+					} else if (match[1] === 'Running...') {
+						// Running status
+						const runningStr = match[1];
+						const runningStart = startPos + line.substring(startPos).indexOf(runningStr);
+						tokensBuilder.push(lineNumber, runningStart, runningStr.length, 5, 2); // keyword type with italic modifier
+					}
+				}
+				break; // Only match the first pattern
 			}
 		}
 	}
@@ -539,35 +610,117 @@ export function activate(context: vscode.ExtensionContext) {
 			const newContent = commandLines.join('\n') + '\n\n';
 			terminalProvider.updateContent(newContent);
 			
-			// Use workspace root as current working directory
-			const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			// Use workspace root as current working directory, fallback to process.cwd() for tests
+			const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
 			
-			const process = spawn(command, args, { 
+			// Track timing for the command execution
+			const startTime = Date.now();
+			let timingInterval: NodeJS.Timeout | undefined;
+			
+			// Add initial timing line
+			terminalProvider.appendContent('\nRunning...\n');
+			
+			const childProcess = spawn(command, args, { 
 				stdio: ['pipe', 'pipe', 'pipe'],
 				shell: false,
 				cwd: workspaceRoot
 			});
-
+			
 			let stdoutBuffer = '';
 			let stderrBuffer = '';
+			
+			// Function to format elapsed time
+			const formatElapsedTime = (milliseconds: number): string => {
+				const seconds = Math.floor(milliseconds / 1000);
+				const minutes = Math.floor(seconds / 60);
+				const hours = Math.floor(minutes / 60);
+				
+				const s = seconds % 60;
+				const m = minutes % 60;
+				const h = hours;
+				
+				if (h > 0) {
+					return `${h}h ${m}m ${s}s`;
+				} else if (m > 0) {
+					return `${m}m ${s}s`;
+				} else {
+					return `${s}s`;
+				}
+			};
+			
+			// Update timing every second
+			timingInterval = setInterval(() => {
+				const elapsed = Date.now() - startTime;
+				const timeStr = formatElapsedTime(elapsed);
+				
+				// Update the last line with current timing
+				const currentContent = terminalProvider!.getContent();
+				const lines = currentContent.split('\n');
+				
+				// Find and replace the "Running..." line or the last timing line
+				for (let i = lines.length - 1; i >= 0; i--) {
+					if (lines[i].startsWith('Running...') || /^\d+[hms]/.test(lines[i])) {
+						lines[i] = timeStr;
+						break;
+					}
+				}
+				
+				terminalProvider!.updateContent(lines.join('\n'));
+			}, 1000);
 
-			process.stdout.on('data', (data: Buffer) => {
+			childProcess.stdout.on('data', (data: Buffer) => {
 				stdoutBuffer += data.toString();
 				terminalProvider!.appendContent(data.toString());
 			});
 
-			process.stderr.on('data', (data: Buffer) => {
+			childProcess.stderr.on('data', (data: Buffer) => {
 				stderrBuffer += data.toString();
 			});
 
-			process.on('close', (code) => {
+			childProcess.on('close', (code) => {
+				// Clear the timing interval
+				if (timingInterval) {
+					clearInterval(timingInterval);
+				}
+				
+				// Add stderr output if any
 				if (stderrBuffer) {
 					terminalProvider!.appendContent(stderrBuffer);
 				}
+				
+				// Calculate final elapsed time and add exit code line
+				const elapsed = Date.now() - startTime;
+				const timeStr = formatElapsedTime(elapsed);
+				const exitLine = `${code || 0} ${timeStr}\n`;
+				
+				// Replace the last timing line with the final exit code and time
+				const currentContent = terminalProvider!.getContent();
+				const lines = currentContent.split('\n');
+				
+				// Find and replace the last timing line
+				for (let i = lines.length - 1; i >= 0; i--) {
+					if (/^\d+[hms]/.test(lines[i]) || lines[i].startsWith('Running...')) {
+						lines[i] = exitLine.trim();
+						break;
+					}
+				}
+				
+				terminalProvider!.updateContent(lines.join('\n'));
 			});
 
-			process.on('error', (error) => {
+			childProcess.on('error', (error) => {
+				// Clear the timing interval on error
+				if (timingInterval) {
+					clearInterval(timingInterval);
+				}
+				
 				terminalProvider!.appendContent(`Error: ${error.message}\n`);
+				
+				// Add error exit code
+				const elapsed = Date.now() - startTime;
+				const timeStr = formatElapsedTime(elapsed);
+				const exitLine = `1 ${timeStr}\n`;
+				terminalProvider!.appendContent(exitLine);
 			});
 		}
 	});

@@ -371,4 +371,49 @@ src/extension.ts:15:40: error: expected ',' after initializer`;
 			assert.ok(true, 'Definition provider handled gracefully');
 		}
 	});
+
+	test('terminal editor displays timing information during command execution', async () => {
+		// Get a fresh terminal
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
+		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
+			editor.document.uri.toString() === terminalUri.toString()
+		);
+		assert.ok(terminalEditor, 'Terminal editor should be visible');
+		
+		// Clear any existing content first
+		const fullRange = new vscode.Range(0, 0, terminalEditor.document.lineCount, 0);
+		const clearSuccess = await terminalEditor.edit(editBuilder => {
+			editBuilder.replace(fullRange, 'echo timing test');
+		});
+		assert.ok(clearSuccess, 'Clear and set command should be successful');
+		
+		// Make sure the terminal editor is active
+		await vscode.window.showTextDocument(terminalEditor.document);
+		
+		// Execute the command
+		await vscode.commands.executeCommand('terminal-editor.execute');
+		
+		// Wait for command completion and timing information
+		await new Promise(resolve => setTimeout(resolve, 1200));
+		
+		// Check both editor content and filesystem content for timing information
+		const editorContent = terminalEditor.document.getText();
+		const fileContent = Buffer.from(await vscode.workspace.fs.readFile(terminalUri)).toString();
+		
+		// Check both editor content and filesystem content for timing information
+		const editorHasRunning = editorContent.includes('Running...');
+		const editorHasExitCode = /^0 \d+[hms]/m.test(editorContent) || /\n0 \d+[hms]/m.test(editorContent);
+		const editorHasTimestamp = /\d+s/.test(editorContent);
+		
+		const fsHasRunning = fileContent.includes('Running...');
+		const fsHasExitCode = /^0 \d+[hms]/m.test(fileContent) || /\n0 \d+[hms]/m.test(fileContent);
+		const fsHasTimestamp = /\d+s/.test(fileContent);
+		
+		const hasTimingInfo = editorHasRunning || editorHasExitCode || editorHasTimestamp || 
+						   fsHasRunning || fsHasExitCode || fsHasTimestamp;
+		
+		assert.ok(hasTimingInfo, `Terminal should display timing information. Editor content: ${editorContent}. FS content: ${fileContent}. Editor timing: running=${editorHasRunning}, exit=${editorHasExitCode}, time=${editorHasTimestamp}. FS timing: running=${fsHasRunning}, exit=${fsHasExitCode}, time=${fsHasTimestamp}`);
+	});
 });

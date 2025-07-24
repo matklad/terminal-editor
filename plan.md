@@ -53,7 +53,7 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] Syntax highlighting works semantically, but it requires special support from the color theme
       to actually set the colors. Let's use some standard tokens and scopes, even if they are not a
       prefect semantic match.
-- [ ] While the command is running, display running time. Update the time every second.
+- [X] While the command is running, display running time. Update the time every second.
       Format is `1h 2m 3s`.
       When command finishes, prepend exit code: `0 3s` or `2 3s`.
       The time/exit code is last line.
