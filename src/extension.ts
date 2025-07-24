@@ -187,14 +187,14 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 		const fs = require('fs');
 		const path = require('path');
 		
-		// Pattern to match potential file paths
+		// Pattern to match potential file paths with optional line:column syntax
 		const pathPatterns = [
-			// Absolute paths like /path/to/file.ext or C:\path\to\file.ext
-			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)/g,
-			// Relative paths like ./path/to/file.ext or ../file.ext or src/file.ext
-			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)/g,
-			// Simple filenames with extensions
-			/([\w\-]+\.[a-zA-Z0-9]+)/g
+			// Absolute paths like /path/to/file.ext:123:45 or /path/to/file.ext
+			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			// Relative paths like ./path/to/file.ext:123:45 or src/file.ext:123
+			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			// Simple filenames with extensions like file.ext:123:45
+			/([\w\-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g
 		];
 		
 		for (const pattern of pathPatterns) {
@@ -203,7 +203,10 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 			
 			while ((match = pattern.exec(line)) !== null) {
 				const pathStr = match[1];
+				const lineNum = match[2];
+				const colNum = match[3];
 				const startPos = match.index;
+				const fullMatchLength = match[0].length;
 				
 				if (pathStr && pathStr.length > 2) { // Avoid very short matches
 					// Check if this looks like a real file path
@@ -226,8 +229,19 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 							}
 						}
 						
-						// Highlight the path
+						// Highlight the path part
 						tokensBuilder.push(lineNumber, startPos, pathStr.length, tokenType, 0);
+						
+						// Highlight line/column numbers if present
+						if (lineNum) {
+							const lineNumStart = startPos + pathStr.length + 1; // +1 for the colon
+							tokensBuilder.push(lineNumber, lineNumStart, lineNum.length, 0, 0); // function type for line number
+							
+							if (colNum) {
+								const colNumStart = lineNumStart + lineNum.length + 1; // +1 for the colon
+								tokensBuilder.push(lineNumber, colNumStart, colNum.length, 0, 0); // function type for column number
+							}
+						}
 					}
 				}
 			}
@@ -530,14 +544,14 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 		const path = require('path');
 		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
 		
-		// Look for path patterns around the cursor position
+		// Look for path patterns around the cursor position with optional line:column syntax
 		const pathPatterns = [
-			// Absolute paths like /path/to/file.ext or C:\path\to\file.ext
-			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)/g,
-			// Relative paths like ./path/to/file.ext or ../file.ext or src/file.ext
-			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)/g,
-			// Simple filenames with extensions
-			/([\w\-]+\.[a-zA-Z0-9]+)/g
+			// Absolute paths like /path/to/file.ext:123:45 or /path/to/file.ext
+			/([\/\\][\w\-\.\/\\]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			// Relative paths like ./path/to/file.ext:123:45 or src/file.ext:123
+			/(\.[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+|[\w\-]+[\/\\][\w\-\.\/\\]*\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g,
+			// Simple filenames with extensions like file.ext:123:45
+			/([\w\-]+\.[a-zA-Z0-9]+)(?::(\d+)(?::(\d+))?)?/g
 		];
 		
 		for (const pattern of pathPatterns) {
@@ -546,10 +560,12 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 			
 			while ((match = pattern.exec(lineText)) !== null) {
 				const pathStr = match[1];
+				const lineNum = match[2];
+				const colNum = match[3];
 				const startPos = match.index;
-				const endPos = startPos + pathStr.length;
+				const endPos = startPos + match[0].length;
 				
-				// Check if cursor is within this path
+				// Check if cursor is within this path (including line:column part)
 				if (position.character >= startPos && position.character <= endPos) {
 					if (pathStr && pathStr.length > 2) {
 						let fullPath = pathStr;
@@ -562,7 +578,20 @@ class TerminalDefinitionProvider implements vscode.DefinitionProvider {
 						try {
 							if (fs.existsSync(fullPath)) {
 								const targetUri = vscode.Uri.file(fullPath);
-								return new vscode.Location(targetUri, new vscode.Position(0, 0));
+								
+								// Use line:column info if available
+								let targetLine = 0;
+								let targetCol = 0;
+								
+								if (lineNum) {
+									targetLine = Math.max(0, parseInt(lineNum, 10) - 1); // Convert to 0-based
+								}
+								if (colNum) {
+									targetCol = Math.max(0, parseInt(colNum, 10) - 1); // Convert to 0-based
+								}
+								
+								const targetPosition = new vscode.Position(targetLine, targetCol);
+								return new vscode.Location(targetUri, targetPosition);
 							}
 						} catch (error) {
 							// File doesn't exist or can't be accessed
