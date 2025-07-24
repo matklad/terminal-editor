@@ -82,61 +82,71 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 		
 		let lineNumber = 0;
+		let inCommandSection = true;
+		
 		for (const line of lines) {
-			if (line.trim() === '') {
-				break; // Stop at first blank line
+			if (inCommandSection && line.trim() === '') {
+				inCommandSection = false; // Switch to output section after first blank line
+				lineNumber++;
+				continue;
 			}
 			
 			if (line.trim().length > 0) {
-				const parts = line.trim().split(/\s+/);
-				let charOffset = 0;
-				
-				// Find the start of the first non-whitespace character
-				const leadingWhitespace = line.match(/^\s*/)?.[0]?.length || 0;
-				charOffset = leadingWhitespace;
-				
-				for (let i = 0; i < parts.length; i++) {
-					const part = parts[i];
+				if (inCommandSection) {
+					// Process command lines
+					const parts = line.trim().split(/\s+/);
+					let charOffset = 0;
 					
-					if (i === 0) {
-						// First part is the command - highlight as command
-						tokensBuilder.push(lineNumber, charOffset, part.length, 0, 0); // token type 0 = command
-					} else {
-						// Check if this argument looks like a path
-						if (this.looksLikePath(part)) {
-							let tokenType = 1; // token type 1 = existing path
-							
-							// Check if path exists
-							if (workspaceRoot) {
-								try {
-									let fullPath = part;
-									if (!path.isAbsolute(part)) {
-										fullPath = path.join(workspaceRoot, part);
-									}
-									
-									if (!fs.existsSync(fullPath)) {
-										tokenType = 2; // token type 2 = non-existing path
-									}
-								} catch (error) {
-									tokenType = 2; // Treat as non-existing if we can't check
-								}
-							}
-							
-							tokensBuilder.push(lineNumber, charOffset, part.length, tokenType, 0);
+					// Find the start of the first non-whitespace character
+					const leadingWhitespace = line.match(/^\s*/)?.[0]?.length || 0;
+					charOffset = leadingWhitespace;
+					
+					for (let i = 0; i < parts.length; i++) {
+						const part = parts[i];
+						
+						if (i === 0) {
+							// First part is the command - highlight as command
+							tokensBuilder.push(lineNumber, charOffset, part.length, 0, 0); // token type 0 = command
 						} else {
-							// Regular argument
-							tokensBuilder.push(lineNumber, charOffset, part.length, 3, 0); // token type 3 = argument
+							// Check if this argument looks like a path
+							if (this.looksLikePath(part)) {
+								let tokenType = 1; // token type 1 = existing path
+								
+								// Check if path exists
+								if (workspaceRoot) {
+									try {
+										let fullPath = part;
+										if (!path.isAbsolute(part)) {
+											fullPath = path.join(workspaceRoot, part);
+										}
+										
+										if (!fs.existsSync(fullPath)) {
+											tokenType = 2; // token type 2 = non-existing path
+										}
+									} catch (error) {
+										tokenType = 2; // Treat as non-existing if we can't check
+									}
+								}
+								
+								tokensBuilder.push(lineNumber, charOffset, part.length, tokenType, 0);
+							} else {
+								// Regular argument
+								tokensBuilder.push(lineNumber, charOffset, part.length, 3, 0); // token type 3 = argument
+							}
+						}
+						
+						charOffset += part.length;
+						
+						// Skip whitespace to next part
+						if (i < parts.length - 1) {
+							const remainingLine = line.substring(charOffset);
+							const nextWhitespace = remainingLine.match(/^\s+/)?.[0]?.length || 0;
+							charOffset += nextWhitespace;
 						}
 					}
-					
-					charOffset += part.length;
-					
-					// Skip whitespace to next part
-					if (i < parts.length - 1) {
-						const remainingLine = line.substring(charOffset);
-						const nextWhitespace = remainingLine.match(/^\s+/)?.[0]?.length || 0;
-						charOffset += nextWhitespace;
-					}
+				} else {
+					// Process output lines - look for error patterns
+					this.highlightErrorsInLine(line, lineNumber, tokensBuilder, workspaceRoot);
 				}
 			}
 			lineNumber++;
@@ -155,6 +165,50 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 			   arg.startsWith('.') || 
 			   /\.(js|ts|json|md|txt|py|java|c|cpp|h|html|css|xml|yml|yaml)$/i.test(arg) ||
 			   arg.includes('\\'); // Windows paths
+	}
+	
+	private highlightErrorsInLine(line: string, lineNumber: number, tokensBuilder: vscode.SemanticTokensBuilder, workspaceRoot?: string): void {
+		// Look for error patterns like: /path/to/file.ext:line:col: error: message
+		// Also handle patterns like: file.ext:line:col: error: message  
+		// And: Error in file.ext at line line, column col
+		
+		const errorPatterns = [
+			// Pattern: /path/to/file.ext:123:45: error: message
+			/([^\s:]+\.[a-zA-Z0-9]+):(\d+):(\d+):\s*(error|warning|note):/g,
+			// Pattern: file.ext:123:45: error: message (relative path)
+			/([a-zA-Z0-9_.-]+\.[a-zA-Z0-9]+):(\d+):(\d+):\s*(error|warning|note):/g,
+			// Pattern: Error in file.ext
+			/(Error|WARNING|Note)\s+in\s+([^\s:]+\.[a-zA-Z0-9]+)/g
+		];
+		
+		for (const pattern of errorPatterns) {
+			let match;
+			pattern.lastIndex = 0; // Reset regex state
+			
+			while ((match = pattern.exec(line)) !== null) {
+				const fullMatch = match[0];
+				const filePath = match[1] || match[2]; // Different capture groups for different patterns
+				const startPos = match.index;
+				
+				if (filePath) {
+					// Highlight the file path part
+					const filePathStart = line.indexOf(filePath, startPos);
+					if (filePathStart !== -1) {
+						tokensBuilder.push(lineNumber, filePathStart, filePath.length, 4, 0); // token type 4 = error file path
+					}
+					
+					// Highlight the error keyword
+					const errorKeywords = ['error', 'warning', 'note', 'Error', 'WARNING', 'Note'];
+					for (const keyword of errorKeywords) {
+						const keywordIndex = line.indexOf(keyword, startPos);
+						if (keywordIndex !== -1 && keywordIndex < startPos + fullMatch.length) {
+							tokensBuilder.push(lineNumber, keywordIndex, keyword.length, 5, 0); // token type 5 = error keyword
+							break;
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -246,7 +300,7 @@ export function activate(context: vscode.ExtensionContext) {
 	
 	// Register semantic tokens provider for syntax highlighting
 	const legend = new vscode.SemanticTokensLegend(
-		['command', 'existingPath', 'nonExistingPath', 'argument'], 
+		['command', 'existingPath', 'nonExistingPath', 'argument', 'errorPath', 'errorKeyword'], 
 		['bold']
 	);
 	const semanticProvider = new TerminalSemanticTokensProvider();

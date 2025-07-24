@@ -43,7 +43,7 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
       Add tests.
 - [X] Let's get serious. The editor starts empty, no prompt, no output.
 - [X] Clear the output before executing a new command.
-- [ ] If command output contains errors like `/file/path.zig:153:40: error: expected ',' after initializer`,
+- [X] If command output contains errors like `/file/path.zig:153:40: error: expected ',' after initializer`,
       highlight them.
       Add tests.
 - [ ] Make "goto definition" work for such paths.
