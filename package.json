@@ -15,11 +15,11 @@
     "commands": [
       {
         "command": "terminal-editor.reveal",
-        "title": "Reveal Terminal"
+        "title": "terminal-editor: reveal"
       },
       {
         "command": "terminal-editor.execute",
-        "title": "Execute Command"
+        "title": "terminal-editor: run"
       }
     ]
   },
