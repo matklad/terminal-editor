@@ -849,9 +849,7 @@ export function activate(context: vscode.ExtensionContext) {
 			// Track timing for the command execution
 			const startTime = Date.now();
 			let timingInterval: NodeJS.Timeout | undefined;
-			
-			// Add initial timing line
-			terminalProvider.appendContent('\nRunning...\n');
+			let timingLineAdded = false;
 			
 			const childProcess = spawn(command, args, { 
 				stdio: ['pipe', 'pipe', 'pipe'],
@@ -861,6 +859,7 @@ export function activate(context: vscode.ExtensionContext) {
 			
 			let stdoutBuffer = '';
 			let stderrBuffer = '';
+			let hasOutput = false;
 			
 			// Function to format elapsed time
 			const formatElapsedTime = (milliseconds: number): string => {
@@ -881,28 +880,46 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			};
 			
-			// Update timing every second
+			// Update timing display every second
 			timingInterval = setInterval(() => {
 				const elapsed = Date.now() - startTime;
 				const timeStr = formatElapsedTime(elapsed);
 				
-				// Update the last line with current timing
-				const currentContent = terminalProvider!.getContent();
-				const lines = currentContent.split('\n');
-				
-				// Find and replace the "Running..." line or the last timing line
-				for (let i = lines.length - 1; i >= 0; i--) {
-					if (lines[i].startsWith('Running...') || /^\d+[hms]/.test(lines[i])) {
-						lines[i] = timeStr;
-						break;
+				if (!hasOutput) {
+					// If no output yet, show timing where it will be at the end
+					const currentContent = terminalProvider!.getContent();
+					if (!timingLineAdded) {
+						terminalProvider!.appendContent('\n' + timeStr + '\n');
+						timingLineAdded = true;
+					} else {
+						// Update the timing line
+						const lines = currentContent.split('\n');
+						for (let i = lines.length - 1; i >= 0; i--) {
+							if (/^\d+[hms]/.test(lines[i]) || lines[i].startsWith('Running...')) {
+								lines[i] = timeStr;
+								break;
+							}
+						}
+						terminalProvider!.updateContent(lines.join('\n'));
 					}
 				}
-				
-				terminalProvider!.updateContent(lines.join('\n'));
 			}, 1000);
 
 			childProcess.stdout.on('data', (data: Buffer) => {
 				stdoutBuffer += data.toString();
+				hasOutput = true;
+				
+				// Remove timing line if it exists, we'll add it at the end
+				if (timingLineAdded) {
+					const currentContent = terminalProvider!.getContent();
+					const lines = currentContent.split('\n');
+					const filteredLines = lines.filter(line => 
+						!/^\d+[hms]/.test(line) && !line.startsWith('Running...')
+					);
+					terminalProvider!.updateContent(filteredLines.join('\n'));
+					timingLineAdded = false;
+				}
+				
 				terminalProvider!.appendContent(data.toString());
 			});
 
@@ -921,24 +938,13 @@ export function activate(context: vscode.ExtensionContext) {
 					terminalProvider!.appendContent(stderrBuffer);
 				}
 				
-				// Calculate final elapsed time and add exit code line
+				// Calculate final elapsed time and add exit code line at the very end
 				const elapsed = Date.now() - startTime;
 				const timeStr = formatElapsedTime(elapsed);
-				const exitLine = `${code || 0} ${timeStr}\n`;
+				const exitLine = `${code || 0} ${timeStr}`;
 				
-				// Replace the last timing line with the final exit code and time
-				const currentContent = terminalProvider!.getContent();
-				const lines = currentContent.split('\n');
-				
-				// Find and replace the last timing line
-				for (let i = lines.length - 1; i >= 0; i--) {
-					if (/^\d+[hms]/.test(lines[i]) || lines[i].startsWith('Running...')) {
-						lines[i] = exitLine.trim();
-						break;
-					}
-				}
-				
-				terminalProvider!.updateContent(lines.join('\n'));
+				// Always append the final timing as the last line
+				terminalProvider!.appendContent('\n' + exitLine + '\n');
 			});
 
 			childProcess.on('error', (error) => {
@@ -949,11 +955,11 @@ export function activate(context: vscode.ExtensionContext) {
 				
 				terminalProvider!.appendContent(`Error: ${error.message}\n`);
 				
-				// Add error exit code
+				// Add error exit code at the very end
 				const elapsed = Date.now() - startTime;
 				const timeStr = formatElapsedTime(elapsed);
-				const exitLine = `1 ${timeStr}\n`;
-				terminalProvider!.appendContent(exitLine);
+				const exitLine = `1 ${timeStr}`;
+				terminalProvider!.appendContent('\n' + exitLine + '\n');
 			});
 		}
 	});
