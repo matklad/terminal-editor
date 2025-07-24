@@ -18,7 +18,7 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('terminal-editor.reveal');
 		
 		// Check that the terminal document is now open
-		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		const terminalEditor = vscode.window.visibleTextEditors.find(editor => 
 			editor.document.uri.toString() === terminalUri.toString()
 		);
@@ -33,7 +33,7 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('terminal-editor.reveal');
 		
 		// Should only have one terminal editor
-		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		const terminalEditors = vscode.window.visibleTextEditors.filter(editor => 
 			editor.document.uri.toString() === terminalUri.toString()
 		);
@@ -50,7 +50,7 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('terminal-editor.reveal');
 		
 		// Check that terminal is in second column
-		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		const terminalEditor = vscode.window.visibleTextEditors.find(editor => 
 			editor.document.uri.toString() === terminalUri.toString()
 		);
@@ -84,7 +84,7 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('terminal-editor.reveal');
 		
 		// Get the terminal editor and modify its content to have a command
-		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
 			editor.document.uri.toString() === terminalUri.toString()
 		);
@@ -109,7 +109,7 @@ suite('Extension Test Suite', () => {
 		
 		await vscode.commands.executeCommand('terminal-editor.reveal');
 		
-		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
 			editor.document.uri.toString() === terminalUri.toString()
 		);
@@ -123,5 +123,32 @@ suite('Extension Test Suite', () => {
 		
 		// The command should execute without throwing
 		// The actual command would be "echo hello world" (joined with spaces)
+	});
+
+	test('terminal editor is editable', async () => {
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
+		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
+			editor.document.uri.toString() === terminalUri.toString()
+		);
+		assert.ok(terminalEditor, 'Terminal editor should be visible');
+		
+		// Store the original content
+		const originalContent = terminalEditor.document.getText();
+		
+		// Test that we can edit the document using the editor's edit API
+		const success = await terminalEditor.edit(editBuilder => {
+			const lastLine = terminalEditor!.document.lineAt(terminalEditor!.document.lineCount - 1);
+			const fullRange = new vscode.Range(0, 0, terminalEditor!.document.lineCount - 1, lastLine.text.length);
+			editBuilder.replace(fullRange, 'ls -la\n\nThis is an edited command');
+		});
+		
+		assert.ok(success, 'Edit should be successful');
+		
+		// Verify the content was changed
+		const newContent = terminalEditor.document.getText();
+		assert.notStrictEqual(newContent, originalContent, 'Content should have changed');
+		assert.ok(newContent.includes('ls -la'), 'New content should contain the edited command');
 	});
 });

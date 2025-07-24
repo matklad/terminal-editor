@@ -30,9 +30,9 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] Change the logic of `execute` command to treat anything until the first blank like as a command,
       to make it easy to enter multiline commands.
       Write tests.
-- [ ] Remove dependency on glob in favor of explicitly listing all files with test
+- [X] Remove dependency on glob in favor of explicitly listing all files with test
       Regenerate package-json.lock
-- [ ] Make the terminal editor editable, so that the user can actually change the command.
+- [X] Make the terminal editor editable, so that the user can actually change the command.
       Add a test.
-- [ ] Implement basic syntax highlighting, by coloring the prompt differently.
-- [ ] When terminal editor is focused, bind cmd-Enter to `execute` command. 
+- [X] Implement basic syntax highlighting, by coloring the prompt differently.
+- [X] When terminal editor is focused, bind cmd-Enter to `execute` command. 

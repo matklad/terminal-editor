@@ -1,36 +1,111 @@
 import * as vscode from 'vscode';
 import { spawn } from 'child_process';
 
-let terminalProvider: TerminalProvider | undefined;
+let terminalProvider: TerminalFileSystemProvider | undefined;
 
-class TerminalProvider implements vscode.TextDocumentContentProvider {
-	private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
-	readonly onDidChange = this._onDidChange.event;
+class TerminalFileSystemProvider implements vscode.FileSystemProvider {
+	private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+	readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
 
 	private content = 'echo hello\nworld\n\nThis is a multiline command that will be joined with spaces';
 
-	provideTextDocumentContent(uri: vscode.Uri): string {
-		return this.content;
+	watch(uri: vscode.Uri, options: { readonly recursive: boolean; readonly excludes: readonly string[]; }): vscode.Disposable {
+		return new vscode.Disposable(() => {});
 	}
 
-	updateContent(newContent: string) {
-		this.content = newContent;
-		this._onDidChange.fire(vscode.Uri.parse('terminal-editor:terminal'));
+	stat(uri: vscode.Uri): vscode.FileStat {
+		if (uri.path === '/terminal') {
+			return {
+				type: vscode.FileType.File,
+				ctime: Date.now(),
+				mtime: Date.now(),
+				size: Buffer.byteLength(this.content, 'utf8')
+			};
+		}
+		throw vscode.FileSystemError.FileNotFound(uri);
 	}
 
+	readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
+		return [];
+	}
+
+	createDirectory(uri: vscode.Uri): void {
+		// Not implemented
+	}
+
+	readFile(uri: vscode.Uri): Uint8Array {
+		if (uri.path === '/terminal') {
+			return Buffer.from(this.content, 'utf8');
+		}
+		throw vscode.FileSystemError.FileNotFound(uri);
+	}
+
+	writeFile(uri: vscode.Uri, content: Uint8Array, options: { readonly create: boolean; readonly overwrite: boolean; }): void {
+		if (uri.path === '/terminal') {
+			this.content = Buffer.from(content).toString('utf8');
+			this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+		} else {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
+	}
+
+	delete(uri: vscode.Uri): void {
+		// Not implemented
+	}
+
+	rename(oldUri: vscode.Uri, newUri: vscode.Uri): void {
+		// Not implemented
+	}
+	
 	appendContent(newContent: string) {
 		this.content += newContent;
-		this._onDidChange.fire(vscode.Uri.parse('terminal-editor:terminal'));
+		const uri = vscode.Uri.parse('terminal-editor:/terminal');
+		this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+	}
+}
+
+class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
+	async provideDocumentSemanticTokens(document: vscode.TextDocument): Promise<vscode.SemanticTokens> {
+		const tokensBuilder = new vscode.SemanticTokensBuilder();
+		
+		// For terminal, we'll highlight the first line(s) before the blank line as commands
+		const text = document.getText();
+		const lines = text.split('\n');
+		
+		let lineNumber = 0;
+		for (const line of lines) {
+			if (line.trim() === '') {
+				break; // Stop at first blank line
+			}
+			
+			// Highlight the entire command line as a command
+			if (line.trim().length > 0) {
+				tokensBuilder.push(lineNumber, 0, line.length, 0, 0); // token type 0 = command
+			}
+			lineNumber++;
+		}
+		
+		return tokensBuilder.build();
 	}
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	terminalProvider = new TerminalProvider();
+	terminalProvider = new TerminalFileSystemProvider();
 	
-	let disposableProvider = vscode.workspace.registerTextDocumentContentProvider('terminal-editor', terminalProvider);
+	// Register the file system provider to enable editing
+	let disposableProvider = vscode.workspace.registerFileSystemProvider('terminal-editor', terminalProvider);
+	
+	// Register semantic tokens provider for syntax highlighting
+	const legend = new vscode.SemanticTokensLegend(['command'], ['bold']);
+	const semanticProvider = new TerminalSemanticTokensProvider();
+	let disposableSemanticProvider = vscode.languages.registerDocumentSemanticTokensProvider(
+		{ scheme: 'terminal-editor' }, 
+		semanticProvider, 
+		legend
+	);
 	
 	let disposable = vscode.commands.registerCommand('terminal-editor.reveal', async () => {
-		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		
 		// Check if the terminal is already open
 		const existingEditor = vscode.window.visibleTextEditors.find(editor => 
@@ -68,7 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		// Check if this is the terminal editor
-		const terminalUri = vscode.Uri.parse('terminal-editor:terminal');
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
 		if (activeEditor.document.uri.toString() !== terminalUri.toString()) {
 			vscode.window.showErrorMessage('Execute command can only be run from terminal editor');
 			return;
@@ -130,7 +205,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(disposableProvider, disposable, executeDisposable);
+	context.subscriptions.push(disposableProvider, disposableSemanticProvider, disposable, executeDisposable);
 }
 
 export function deactivate() {}
