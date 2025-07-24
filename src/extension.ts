@@ -760,8 +760,11 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 		
 		if (existingEditor) {
-			// Terminal already open, just focus it
+			// Terminal already open, focus it and re-run the last command
 			await vscode.window.showTextDocument(existingEditor.document, existingEditor.viewColumn);
+			
+			// Execute the current command in the terminal
+			await vscode.commands.executeCommand('terminal-editor.execute');
 			return;
 		}
 

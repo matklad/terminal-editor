@@ -546,4 +546,35 @@ README.md`;
 			assert.ok(true, 'Definition provider handled gracefully');
 		}
 	});
+
+	test('terminal-editor.reveal re-runs command when terminal is already visible', async () => {
+		// First reveal terminal
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
+		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
+			editor.document.uri.toString() === terminalUri.toString()
+		);
+		assert.ok(terminalEditor, 'Terminal editor should be visible');
+
+		// Add a command
+		const success = await terminalEditor.edit(editBuilder => {
+			const fullRange = new vscode.Range(0, 0, terminalEditor!.document.lineCount, 0);
+			editBuilder.replace(fullRange, 'echo hello from re-run');
+		});
+		assert.ok(success, 'Edit should be successful');
+
+		// Call reveal again - this should re-run the command
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		// Wait for execution to complete
+		await new Promise(resolve => setTimeout(resolve, 200));
+
+		// Check that the command was executed by looking at the filesystem content
+		const fileContent = Buffer.from(await vscode.workspace.fs.readFile(terminalUri)).toString();
+		
+		// Should contain the command output
+		const hasOutput = fileContent.includes('hello from re-run');
+		assert.ok(hasOutput, `Terminal should have executed the command. Content: ${fileContent}`);
+	});
 });
