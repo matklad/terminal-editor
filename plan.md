@@ -7,13 +7,13 @@ file, presses enter, and sees the output in the same text file.
 The extension will use minimal amount of dependencies possible, ideally, zero besides VS Code basic
 API.
 
-Here's a plan. After each step is finished, a commit is made to check it with [X].
+Here's a plan. After each step is finished, a commit is made to check it with [X] in this file.
 
-- [ ] Create an empty VS Code extension.
-- [ ] Add "terminal-editor.reveal" command that does nothing.
-- [ ] Add a smoke test that a the command works.
+- [X] Create an empty VS Code extension.
+- [X] Add "terminal-editor.reveal" command that does nothing.
+- [X] Add a smoke test that a the command works.
       From this point on, all commits MUST pass the tests.
-- [ ] Make the "terminal-editor.reveal" command reveal "terminal", which is just a virtual text
+- [X] Make the "terminal-editor.reveal" command reveal "terminal", which is just a virtual text
       file.
       Terminal should be revealed in the right side of vertical split.
       If the window is not split, it should be split.
@@ -21,12 +21,18 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
       The "terminal" buffer should be a singleton.
       For now, set the contents of the buffer to "hello world".
       Add tests for the above behaviors.
-- [ ] Add "terminal-editor.execute" command that "runs" the command specified in the first line
+- [X] Add "terminal-editor.execute" command that "runs" the command specified in the first line
       of the editor buffer.
       For now, simply split command on the whitespace.
       The result process stderr and stdout should be appended after the command. Stdout goes first, then stderr.
       The output is streamed.
       Write tests.
-- [ ] Change the logic of `execute` command to treat anything until the first blank like as a command,
+- [X] Change the logic of `execute` command to treat anything until the first blank like as a command,
       to make it easy to enter multiline commands.
       Write tests.
+- [ ] Remove dependency on glob in favor of explicitly listing all files with test
+      Regenerate package-json.lock
+- [ ] Make the terminal editor editable, so that the user can actually change the command.
+      Add a test.
+- [ ] Implement basic syntax highlighting, by coloring the prompt differently.
+- [ ] When terminal editor is focused, bind cmd-Enter to `execute` command. 
