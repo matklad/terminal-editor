@@ -59,4 +59,12 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
       The time/exit code is last line.
       Don't forget to add syntax highlighting.
 - [X] If that can be done in not too hacky way, add fish-shell style autosuggestions from history.
-      History doesn't need to persist across restarts, can be in memory. 
+      History doesn't need to persist across restarts, can be in memory.
+- [ ] Provide highlighting and goto definition for all path in the output, and only only for the
+      paths in error messages.
+- [ ] Change `reveal` command such that, if the terminal is already visible, the command is simply re-run
+- [ ] Make sure that timing and exit code information is the last like. When command finishes, it
+      now ends up before the output.
+- [ ] Remove blinking highlights for seconds, to make it less annoying.
+- [ ] Inline suggestions show up correctly, but aren't actually accepted on arrow right/end, we
+      need to fix it.
