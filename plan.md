@@ -49,3 +49,7 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] Make "goto definition" work for such paths.
 - [X] If possible, highlight background for prompt line(s) differently, such that even in an empty
       terminal the first line is highlighted.
+- [ ] Let's change the logic to use the _left_ rather than the _right_ pane for the editor.
+- [ ] Syntax highlighting works semantically, but it requires special support from the color theme
+      to actually set the colors. Let's use some standard tokens and scopes, even if they are not a
+      prefect semantic match.
