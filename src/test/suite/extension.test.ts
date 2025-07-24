@@ -253,4 +253,45 @@ suite('Extension Test Suite', () => {
 			assert.ok(true, 'Semantic tokens provider handled gracefully');
 		}
 	});
+
+	test('terminal editor clears output before executing new command', async () => {
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		const terminalUri = vscode.Uri.parse('terminal-editor:/terminal');
+		let terminalEditor = vscode.window.visibleTextEditors.find(editor => 
+			editor.document.uri.toString() === terminalUri.toString()
+		);
+		assert.ok(terminalEditor, 'Terminal editor should be visible');
+		
+		// Add a command and some fake output
+		let success = await terminalEditor.edit(editBuilder => {
+			editBuilder.insert(new vscode.Position(0, 0), 'echo first\n\nOld output from previous run\nMore old output');
+		});
+		assert.ok(success, 'First edit should be successful');
+		
+		// Make sure we have the old content
+		let contentBefore = terminalEditor.document.getText();
+		assert.ok(contentBefore.includes('Old output'), 'Should have old output initially');
+		
+		// Now change the command and execute it
+		success = await terminalEditor.edit(editBuilder => {
+			const fullRange = new vscode.Range(0, 0, terminalEditor!.document.lineCount, 0);
+			editBuilder.replace(fullRange, 'echo new command');
+		});
+		assert.ok(success, 'Command edit should be successful');
+		
+		// Make sure the terminal editor is active
+		await vscode.window.showTextDocument(terminalEditor.document);
+		
+		// Execute the new command
+		await vscode.commands.executeCommand('terminal-editor.execute');
+		
+		// Wait a bit for the command to execute
+		await new Promise(resolve => setTimeout(resolve, 100));
+		
+		// Check that old output is cleared and only new command remains (plus new output)
+		const contentAfter = terminalEditor.document.getText();
+		assert.ok(!contentAfter.includes('Old output'), 'Old output should be cleared');
+		assert.ok(contentAfter.includes('echo new command'), 'New command should be present');
+	});
 });

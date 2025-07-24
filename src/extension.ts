@@ -62,6 +62,12 @@ class TerminalFileSystemProvider implements vscode.FileSystemProvider {
 		const uri = vscode.Uri.parse('terminal-editor:/terminal');
 		this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
 	}
+	
+	updateContent(newContent: string) {
+		this.content = newContent;
+		const uri = vscode.Uri.parse('terminal-editor:/terminal');
+		this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+	}
 }
 
 class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
@@ -326,9 +332,11 @@ export function activate(context: vscode.ExtensionContext) {
 		const command = commandParts[0];
 		const args = commandParts.slice(1);
 
-		// Append the command output to terminal
+		// Clear any previous output and prepare for new command execution
 		if (terminalProvider) {
-			terminalProvider.appendContent('\n\n');
+			// Clear everything after the command lines, keeping only the command
+			const newContent = commandLines.join('\n') + '\n\n';
+			terminalProvider.updateContent(newContent);
 			
 			// Use workspace root as current working directory
 			const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
