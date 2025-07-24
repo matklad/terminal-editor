@@ -117,23 +117,8 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 						} else {
 							// Check if this argument looks like a path
 							if (this.looksLikePath(part)) {
-								let tokenType = 1; // token type 1 = variable (existing path)
-								
-								// Check if path exists
-								if (workspaceRoot) {
-									try {
-										let fullPath = part;
-										if (!path.isAbsolute(part)) {
-											fullPath = path.join(workspaceRoot, part);
-										}
-										
-										if (!fs.existsSync(fullPath)) {
-											tokenType = 2; // token type 2 = string (non-existing path)
-										}
-									} catch (error) {
-										tokenType = 2; // Treat as non-existing if we can't check
-									}
-								}
+								// Always use string token type for paths as requested
+								const tokenType = 2; // token type 2 = string (all paths)
 								
 								tokensBuilder.push(lineNumber, charOffset, part.length, tokenType, 0);
 							} else {
@@ -211,23 +196,8 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 				if (pathStr && pathStr.length > 2) { // Avoid very short matches
 					// Check if this looks like a real file path
 					if (this.looksLikePath(pathStr)) {
-						let tokenType = 1; // Default to variable (existing path)
-						
-						// Try to determine if the path exists
-						if (workspaceRoot) {
-							try {
-								let fullPath = pathStr;
-								if (!path.isAbsolute(pathStr)) {
-									fullPath = path.join(workspaceRoot, pathStr);
-								}
-								
-								if (!fs.existsSync(fullPath)) {
-									tokenType = 2; // String type for non-existing path
-								}
-							} catch (error) {
-								tokenType = 2; // Treat as non-existing if we can't check
-							}
-						}
+						// Always use string token type for paths as requested
+						const tokenType = 2; // String type for all paths
 						
 						// Highlight the path part
 						tokensBuilder.push(lineNumber, startPos, pathStr.length, tokenType, 0);
