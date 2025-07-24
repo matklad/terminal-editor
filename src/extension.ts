@@ -679,12 +679,16 @@ export function activate(context: vscode.ExtensionContext) {
 	// Create decoration type for prompt background highlighting
 	promptDecorationType = vscode.window.createTextEditorDecorationType({
 		backgroundColor: new vscode.ThemeColor('editor.lineHighlightBackground'),
-		isWholeLine: true
+		isWholeLine: true,
+		// Disable any potential blinking/animation effects
+		textDecoration: 'none'
 	});
 	
 	// Create decoration type for autosuggestions
 	autosuggestionDecorationType = vscode.window.createTextEditorDecorationType({
 		// Decoration options are set per-decoration in updateAutosuggestionDecorations
+		// Disable any potential blinking/animation effects
+		textDecoration: 'none'
 	});
 	
 	// Register the file system provider to enable editing
@@ -880,7 +884,7 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			};
 			
-			// Update timing display every second
+			// Update timing display every 2 seconds to reduce visual noise
 			timingInterval = setInterval(() => {
 				const elapsed = Date.now() - startTime;
 				const timeStr = formatElapsedTime(elapsed);
@@ -903,7 +907,7 @@ export function activate(context: vscode.ExtensionContext) {
 						terminalProvider!.updateContent(lines.join('\n'));
 					}
 				}
-			}, 1000);
+			}, 2000);
 
 			childProcess.stdout.on('data', (data: Buffer) => {
 				stdoutBuffer += data.toString();

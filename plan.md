@@ -65,6 +65,6 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 - [X] Change `reveal` command such that, if the terminal is already visible, the command is simply re-run
 - [X] Make sure that timing and exit code information is the last like. When command finishes, it
       now ends up before the output.
-- [ ] Remove blinking highlights for seconds, to make it less annoying.
+- [X] Remove blinking highlights for seconds, to make it less annoying.
 - [X] Inline suggestions show up correctly, but aren't actually accepted on arrow right/end, we
       need to fix it.
