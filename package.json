@@ -42,8 +42,8 @@
         "when": "editorTextFocus && resourceScheme == terminal-editor"
       },
       {
-        "command": "terminal-editor.acceptSuggestion", 
-        "key": "end",
+        "command": "terminal-editor.acceptSuggestion",
+        "key": "cmd+right",
         "when": "editorTextFocus && resourceScheme == terminal-editor"
       }
     ]
