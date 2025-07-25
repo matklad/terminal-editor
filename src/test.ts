@@ -7,11 +7,11 @@ export function run(): Promise<void> {
 		color: true
 	});
 
-	const testsRoot = path.resolve(__dirname, '..');
+	const testsRoot = path.resolve(__dirname, '.');
 
 	return new Promise(async (c, e) => {
 		try {
-			const files = ['suite/extension.test.js'];
+			const files = ['extension.test.js'];
 			files.forEach(f => mocha.addFile(path.resolve(testsRoot, f)));
 
 			mocha.run(failures => {
