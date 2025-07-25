@@ -85,3 +85,5 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
 
       Fix it by maintaining stout, stderr and timeing informatin logically, and materializing full
       file text as needed. Also avoid producing more than 128KiB output (the logical stdout can be large, just don't display it all)
+- [ ] Make the history used for autosuggestions persistent across restarts. Store at most 128 items
+      of history.
