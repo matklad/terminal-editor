@@ -11,7 +11,7 @@ export function run(): Promise<void> {
 
 	return new Promise(async (c, e) => {
 		try {
-			const files = ['extension.test.js'];
+			const files = ['extension.test.js', 'providers.test.js'];
 			files.forEach(f => mocha.addFile(path.resolve(testsRoot, f)));
 
 			mocha.run(failures => {
