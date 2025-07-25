@@ -87,4 +87,4 @@ Here's a plan. After each step is finished, a commit is made to check it with [X
       file text as needed. Also avoid producing more than 128KiB output (the logical stdout can be large, just don't display it all)
 - [X] Make the history used for autosuggestions persistent across restarts. Store at most 128 items
       of history.
-- [ ] For auto suggestiong logic, make right arrow accept one word and end accept the whole suggestion. 
+- [X] For auto suggestiong logic, make right arrow accept one word and end accept the whole suggestion. 

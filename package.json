@@ -24,6 +24,10 @@
       {
         "command": "terminal-editor.acceptSuggestion",
         "title": "terminal-editor: accept autosuggestion"
+      },
+      {
+        "command": "terminal-editor.acceptSuggestionWord",
+        "title": "terminal-editor: accept autosuggestion word"
       }
     ],
     "keybindings": [
@@ -33,7 +37,7 @@
         "when": "editorTextFocus && resourceScheme == terminal-editor"
       },
       {
-        "command": "terminal-editor.acceptSuggestion",
+        "command": "terminal-editor.acceptSuggestionWord",
         "key": "right",
         "when": "editorTextFocus && resourceScheme == terminal-editor"
       },

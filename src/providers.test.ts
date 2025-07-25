@@ -197,4 +197,21 @@ suite('Provider Logic Tests', () => {
 			assert.ok(!isTimingLine('time: 3s')); // Not isolated
 		});
 	});
+
+	suite('Word Extraction Logic', () => {
+		// Test the word extraction logic used in acceptSuggestionWord
+		
+		function extractFirstWord(suggestion: string): string {
+			return suggestion.match(/^\s*\S+/)?.[0] || suggestion;
+		}
+		
+		test('extracts first word correctly', () => {
+			assert.strictEqual(extractFirstWord(' world test'), ' world');
+			assert.strictEqual(extractFirstWord(' hello'), ' hello');
+			assert.strictEqual(extractFirstWord('  multiple   words'), '  multiple');
+			assert.strictEqual(extractFirstWord(' single'), ' single');
+			assert.strictEqual(extractFirstWord('noSpace'), 'noSpace');
+			assert.strictEqual(extractFirstWord(''), '');
+		});
+	});
 });

@@ -139,7 +139,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		await terminalExecutor.executeCommand(terminalEditor);
 	});
 
-	const acceptSuggestionCommand = vscode.commands.registerCommand('terminal-editor.acceptSuggestion', async () => {
+	const acceptSuggestionWordCommand = vscode.commands.registerCommand('terminal-editor.acceptSuggestionWord', async () => {
 		const activeEditor = vscode.window.activeTextEditor;
 		if (!activeEditor || activeEditor.document.uri.scheme !== 'terminal-editor') {
 			// Not in terminal editor, do default behavior
@@ -181,7 +181,68 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		// Find suggestion
 		const suggestion = terminalHistory?.findAutosuggestion(currentInput);
 		if (suggestion) {
-			// Insert the suggestion
+			// Accept only the first word from the suggestion
+			const firstWord = suggestion.match(/^\s*\S+/)?.[0] || suggestion;
+			
+			const success = await activeEditor.edit(editBuilder => {
+				const position = new vscode.Position(currentLine, cursorPosition);
+				editBuilder.insert(position, firstWord);
+			});
+
+			if (success) {
+				// Move cursor to end of inserted word
+				const newPosition = new vscode.Position(currentLine, cursorPosition + firstWord.length);
+				activeEditor.selection = new vscode.Selection(newPosition, newPosition);
+			}
+		} else {
+			// No suggestion, do default behavior
+			await vscode.commands.executeCommand('cursorRight');
+		}
+	});
+
+	const acceptSuggestionCommand = vscode.commands.registerCommand('terminal-editor.acceptSuggestion', async () => {
+		const activeEditor = vscode.window.activeTextEditor;
+		if (!activeEditor || activeEditor.document.uri.scheme !== 'terminal-editor') {
+			// Not in terminal editor, do default behavior
+			await vscode.commands.executeCommand('cursorEnd');
+			return;
+		}
+
+		// Check if we're in command section
+		const text = activeEditor.document.getText();
+		const lines = text.split('\n');
+		const currentLine = activeEditor.selection.active.line;
+
+		let inCommandSection = true;
+		for (let i = 0; i < currentLine; i++) {
+			if (lines[i].trim() === '') {
+				inCommandSection = false;
+				break;
+			}
+		}
+
+		if (!inCommandSection) {
+			// Not in command section, do default behavior
+			await vscode.commands.executeCommand('cursorEnd');
+			return;
+		}
+
+		// Get current line and cursor position
+		const line = lines[currentLine];
+		const cursorPosition = activeEditor.selection.active.character;
+
+		// Only suggest if cursor is at end of line
+		if (cursorPosition !== line.length) {
+			await vscode.commands.executeCommand('cursorEnd');
+			return;
+		}
+
+		const currentInput = line.trim();
+
+		// Find suggestion
+		const suggestion = terminalHistory?.findAutosuggestion(currentInput);
+		if (suggestion) {
+			// Insert the entire suggestion
 			const success = await activeEditor.edit(editBuilder => {
 				const position = new vscode.Position(currentLine, cursorPosition);
 				editBuilder.insert(position, suggestion);
@@ -194,7 +255,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 			}
 		} else {
 			// No suggestion, do default behavior
-			await vscode.commands.executeCommand('cursorRight');
+			await vscode.commands.executeCommand('cursorEnd');
 		}
 	});
 
@@ -208,6 +269,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 		disposableSelectionChange,
 		revealCommand,
 		executeCommand,
+		acceptSuggestionWordCommand,
 		acceptSuggestionCommand
 	);
 }

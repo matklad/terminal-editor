@@ -250,7 +250,24 @@ suite('Extension Test Suite', () => {
 			// System doesn't crash - good enough for this test
 		});
 
-		test('accepts suggestions with right arrow', async () => {
+		test('accepts suggestions with right arrow (word-by-word)', async () => {
+			const editor = await buildHistory();
+			await setTerminalContent(editor, 'echo hello');
+			
+			const newPosition = new vscode.Position(0, 10);
+			editor.selection = new vscode.Selection(newPosition, newPosition);
+			
+			await vscode.commands.executeCommand('terminal-editor.acceptSuggestionWord');
+			
+			const updatedContent = editor.document.getText();
+			const firstLine = updatedContent.split('\n')[0];
+			
+			// Should accept only the first word " world" from " world test"
+			const acceptable = firstLine === 'echo hello world' || firstLine === 'echo hello';
+			assert.ok(acceptable, `Unexpected line content: ${firstLine}`);
+		});
+
+		test('accepts full suggestion with end key', async () => {
 			const editor = await buildHistory();
 			await setTerminalContent(editor, 'echo hello');
 			
@@ -262,7 +279,7 @@ suite('Extension Test Suite', () => {
 			const updatedContent = editor.document.getText();
 			const firstLine = updatedContent.split('\n')[0];
 			
-			// Should either accept suggestion or stay same
+			// Should accept the entire suggestion or stay same
 			const acceptable = firstLine.includes('world') || firstLine === 'echo hello';
 			assert.ok(acceptable, `Unexpected line content: ${firstLine}`);
 		});
