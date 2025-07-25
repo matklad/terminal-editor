@@ -5,6 +5,23 @@ let terminalProvider: TerminalFileSystemProvider | undefined;
 let promptDecorationType: vscode.TextEditorDecorationType | undefined;
 let autosuggestionDecorationType: vscode.TextEditorDecorationType | undefined;
 let commandHistory: string[] = [];
+let context: vscode.ExtensionContext;
+
+const HISTORY_KEY = 'terminalEditor.commandHistory';
+const MAX_HISTORY_SIZE = 128;
+
+function saveHistory() {
+	if (context) {
+		context.globalState.update(HISTORY_KEY, commandHistory);
+	}
+}
+
+function loadHistory() {
+	if (context) {
+		const savedHistory = context.globalState.get<string[]>(HISTORY_KEY, []);
+		commandHistory = savedHistory.slice(-MAX_HISTORY_SIZE); // Keep only last 128 items
+	}
+}
 
 class TerminalFileSystemProvider implements vscode.FileSystemProvider {
 	private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
@@ -672,7 +689,10 @@ function updatePromptDecorations(editor: vscode.TextEditor) {
 	editor.setDecorations(promptDecorationType, decorations);
 }
 
-export function activate(context: vscode.ExtensionContext) {
+export function activate(extensionContext: vscode.ExtensionContext) {
+	context = extensionContext;
+	loadHistory();
+	
 	terminalProvider = new TerminalFileSystemProvider();
 
 	// Create decoration type for prompt background highlighting
@@ -829,10 +849,12 @@ export function activate(context: vscode.ExtensionContext) {
 		// Add command to history (avoid duplicates and empty commands)
 		if (commandLine && (!commandHistory.length || commandHistory[commandHistory.length - 1] !== commandLine)) {
 			commandHistory.push(commandLine);
-			// Keep history limited to last 100 commands
-			if (commandHistory.length > 100) {
+			// Keep history limited to MAX_HISTORY_SIZE commands
+			if (commandHistory.length > MAX_HISTORY_SIZE) {
 				commandHistory.shift();
 			}
+			// Save history to persistent storage
+			saveHistory();
 		}
 
 		// Clear any previous output and prepare for new command execution
