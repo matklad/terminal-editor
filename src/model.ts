@@ -1,16 +1,72 @@
+import { spawn, ChildProcess } from 'child_process';
+
 export interface ParsedCommand {
     tokens: string[];
     cursorTokenIndex?: number;
     cursorTokenOffset?: number;
 }
 
+interface ProcessInfo {
+    process: ChildProcess;
+    startTime: Date;
+    exitCode?: number;
+    stdout: string;
+    stderr: string;
+    commandLine: string;
+}
+
 export class Terminal {
+    private currentProcess?: ProcessInfo;
+
     status(): { text: string } {
         return { text: "= =" };
     }
 
     output(): { text: string } {
         return { text: "hello world" };
+    }
+
+    run(commandString: string): void {
+        // Kill existing process if running
+        if (this.currentProcess && this.currentProcess.exitCode === undefined) {
+            this.currentProcess.process.kill("SIGKILL");
+        }
+
+        // Parse command
+        const parsed = parseCommand(commandString);
+        if (parsed.tokens.length === 0) {
+            return;
+        }
+
+        // Start new process
+        const [program, ...args] = parsed.tokens;
+        const process = spawn(program, args);
+
+        const processInfo: ProcessInfo = {
+            process,
+            startTime: new Date(),
+            exitCode: undefined,
+            stdout: '',
+            stderr: '',
+            commandLine: commandString
+        };
+
+        this.currentProcess = processInfo;
+
+        // Capture stdout
+        process.stdout.on('data', (data: Buffer) => {
+            processInfo.stdout += data.toString();
+        });
+
+        // Capture stderr
+        process.stderr.on('data', (data: Buffer) => {
+            processInfo.stderr += data.toString();
+        });
+
+        // Handle process exit
+        process.on('close', (code: number) => {
+            processInfo.exitCode = code;
+        });
     }
 }
 
@@ -40,12 +96,12 @@ export function parseCommand(command: string, cursorPosition?: number): ParsedCo
         const tokenStart = i;
         const tokenIndex = tokens.length;
         let token = '';
-        
+
         if (command[i] === '"') {
             // Quoted token
             const quoteStart = i;
             i++; // Skip opening quote
-            
+
             while (i < command.length && command[i] !== '"') {
                 // Check cursor position within quoted content
                 if (cursorPosition === i) {
@@ -55,11 +111,11 @@ export function parseCommand(command: string, cursorPosition?: number): ParsedCo
                 token += command[i];
                 i++;
             }
-            
+
             if (i < command.length) {
                 i++; // Skip closing quote
             }
-            
+
             // Check if cursor is at the opening quote
             if (cursorPosition === quoteStart) {
                 cursorTokenIndex = tokenIndex;

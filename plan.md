@@ -76,7 +76,7 @@ which are not obvious from the step destription itself.
   and return the index of the token the cursor is at, as well as within-token offset, for
   completion. If the cursor is on the whitespace between the tokens, the index/offset are undefined.
   Add unit-tests.
-- [ ] add run method to Terminal, which takes a command string and exetuces the command.
+- [X] add run method to Terminal, which takes a command string and exetuces the command.
   - the string should be tokenized using parseCommand method
   - Terminal should store, as a state, currently executing process, the instant when execution was
     started, exit code, if execution has finished already, process captured standard outout and
