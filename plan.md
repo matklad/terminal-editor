@@ -41,7 +41,7 @@ file, and optionally add short implementation notes next to the step for future 
   and the output text respectively. They will return a `{ text: string }` object to allow for
   extensibility (we'll return highlights in the future). Use `= =` for status and `"hello world"`
   for output for now.
-- [ ] Show the output of the Terminal:
+- [X] Show the output of the Terminal:
   - Add `terminal-editor` language
   - In extension.ts, add EphemeralFileSystem, whose job is only to prevent VS Code from showing save
     dialog. Important: the source of truth for all the state is the `Terminal` in the `model.ts`,
