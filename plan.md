@@ -18,5 +18,5 @@ Here's a plan for creating extension step-by step. After each step is finished, 
 and `npm run lint` to make sure there are no problems, mark the step as done with `[X]` in this
 file, and optionally add short implementation notes next to the step for future readers.
 
-- [ ] Remove the scaffolding command, and add three new commands with `terminal-editor.` prefix:
-  `reveal`, `run`, and `dwim`.
+- [X] Remove the scaffolding command, and add three new commands with `terminal-editor.` prefix:
+  `reveal`, `run`, and `dwim`. *(Replaced helloWorld command with three new commands in package.json and extension.ts)*

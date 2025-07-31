@@ -16,8 +16,16 @@
   "contributes": {
     "commands": [
       {
-        "command": "terminal-editor.helloWorld",
-        "title": "Hello World"
+        "command": "terminal-editor.reveal",
+        "title": "Terminal Editor: Reveal"
+      },
+      {
+        "command": "terminal-editor.run",
+        "title": "Terminal Editor: Run"
+      },
+      {
+        "command": "terminal-editor.dwim",
+        "title": "Terminal Editor: Do What I Mean"
       }
     ]
   },
