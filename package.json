@@ -37,7 +37,19 @@
         "command": "terminal-editor.dwim",
         "title": "Terminal Editor: Do What I Mean"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Terminal Editor",
+      "properties": {
+        "terminal-editor.maxOutputLines": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Maximum number of output lines to display in the terminal"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

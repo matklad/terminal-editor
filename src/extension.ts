@@ -1,18 +1,25 @@
 import * as vscode from 'vscode';
-import { Terminal } from './model';
+import { Terminal, TerminalSettings } from './model';
 
 let terminal: Terminal;
 
+class VSCodeTerminalSettings implements TerminalSettings {
+	maxOutputLines(): number {
+		const config = vscode.workspace.getConfiguration('terminal-editor');
+		return config.get<number>('maxOutputLines', 50);
+	}
+}
+
 // Test helper function to reset state
 export function resetForTesting() {
-	terminal = new Terminal();
+	terminal = new Terminal(new VSCodeTerminalSettings());
 }
 
 export function activate(context: vscode.ExtensionContext) {
 
 	console.log('Congratulations, your extension "terminal-editor" is now active!');
 
-	terminal = new Terminal();
+	terminal = new Terminal(new VSCodeTerminalSettings());
 
 	const fileSystemProvider = new EphemeralFileSystem();
 	context.subscriptions.push(

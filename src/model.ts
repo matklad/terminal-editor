@@ -1,5 +1,9 @@
 import { spawn, ChildProcess } from 'child_process';
 
+export interface TerminalSettings {
+    maxOutputLines(): number;
+}
+
 export interface ParsedCommand {
     tokens: string[];
     cursorTokenIndex?: number;
@@ -13,14 +17,15 @@ interface ProcessInfo {
     stdout: string;
     stderr: string;
     commandLine: string;
+    completion: Promise<number>;
 }
 
 export class Terminal {
     private currentProcess?: ProcessInfo;
-    private maxOutputLines = 50;
+    private settings: TerminalSettings;
 
-    setMaxOutputLines(maxLines: number): void {
-        this.maxOutputLines = maxLines;
+    constructor(settings: TerminalSettings) {
+        this.settings = settings;
     }
 
     status(): { text: string } {
@@ -34,12 +39,13 @@ export class Terminal {
 
         const combinedOutput = this.currentProcess.stdout + this.currentProcess.stderr;
         const lines = combinedOutput.split('\n');
-        
-        if (lines.length <= this.maxOutputLines) {
+
+        const maxLines = this.settings.maxOutputLines();
+        if (lines.length <= maxLines) {
             return { text: combinedOutput };
         }
 
-        const limitedLines = lines.slice(-this.maxOutputLines);
+        const limitedLines = lines.slice(-maxLines);
         return { text: limitedLines.join('\n') };
     }
 
@@ -59,13 +65,22 @@ export class Terminal {
         const [program, ...args] = parsed.tokens;
         const process = spawn(program, args);
 
+        // Create completion promise that resolves when process exits
+        const completion = new Promise<number>((resolve) => {
+            process.on('close', (code: number) => {
+                processInfo.exitCode = code;
+                resolve(code);
+            });
+        });
+
         const processInfo: ProcessInfo = {
             process,
             startTime: new Date(),
             exitCode: undefined,
             stdout: '',
             stderr: '',
-            commandLine: commandString
+            commandLine: commandString,
+            completion
         };
 
         this.currentProcess = processInfo;
@@ -79,11 +94,18 @@ export class Terminal {
         process.stderr.on('data', (data: Buffer) => {
             processInfo.stderr += data.toString();
         });
+    }
 
-        // Handle process exit
-        process.on('close', (code: number) => {
-            processInfo.exitCode = code;
-        });
+    async waitForCompletion(): Promise<void> {
+        if (!this.currentProcess) {
+            return;
+        }
+
+        if (this.currentProcess.exitCode !== undefined) {
+            return;
+        }
+
+        await this.currentProcess.completion;
     }
 }
 

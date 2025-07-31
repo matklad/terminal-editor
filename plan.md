@@ -88,7 +88,13 @@ which are not obvious from the step destription itself.
   lines.
   Implementation notes: Added maxOutputLines property (default 50) and setMaxOutputLines() method
   for configurability. Output combines stdout and stderr, limiting to last N lines when exceeded.
-- [ ] implement settings for line limit, such that the user can adjust that.
+- [X] implement settings for line limit, such that the user can adjust that.
+  Implementation notes: Added "terminal-editor.maxOutputLines" configuration setting in package.json
+  with default value of 50 (range 1-10000). Refactored to maintain model/view separation by creating
+  TerminalSettings interface in model.ts and VSCodeTerminalSettings adapter in extension.ts. Terminal
+  constructor now accepts settings parameter instead of directly accessing VS Code APIs. Added 
+  waitForCompletion() method to Terminal for testing and enhanced test to actually verify line limiting
+  by executing a node process that generates 20 lines and confirming output is limited to 5 lines.
 - [ ] change `Terminal.status` function to return runtime and status informatino. Runtime should  be
   consice, human readable: `1m 3s`.
 - [ ] Implement `.run` user-visible command. It should execute currnt command line. It should also

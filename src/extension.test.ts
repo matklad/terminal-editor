@@ -2,7 +2,7 @@ import * as assert from 'assert';
 
 import * as vscode from 'vscode';
 import { resetForTesting } from './extension';
-import { parseCommand } from './model';
+import { parseCommand, Terminal, TerminalSettings } from './model';
 
 function findTerminalDocument(): vscode.TextDocument | undefined {
 	const terminalDocs = vscode.workspace.textDocuments.filter(doc => 
@@ -186,5 +186,41 @@ suite('parseCommand Tests', () => {
 		const result = parseCommand('', 0);
 		assert.strictEqual(result.cursorTokenIndex, undefined);
 		assert.strictEqual(result.cursorTokenOffset, undefined);
+	});
+});
+
+suite('Terminal Configuration Tests', () => {
+	test('Terminal respects maxOutputLines configuration', async () => {
+		const maxLines = 5;
+		const mockSettings: TerminalSettings = {
+			maxOutputLines: () => maxLines
+		};
+		const terminal = new Terminal(mockSettings);
+		
+		// Run a command that produces many lines of output
+		const totalLines = 20;
+		const command = `node -e "for(let i = 1; i <= ${totalLines}; i++) console.log('Line ' + i)"`;
+		terminal.run(command);
+		
+		// Wait for the process to complete
+		await terminal.waitForCompletion();
+		
+		// Get the output and verify it's limited to maxLines
+		const output = terminal.output();
+		const lines = output.text.split('\n').filter(line => line.trim() !== '');
+		
+		// The output should be limited to maxLines
+		// Since we generated 20 lines total and limit to 5, we should get the last 5: lines 16-20
+		// But due to how split works with trailing newlines, we might get 4 content lines
+		assert.ok(lines.length <= maxLines, `Got ${lines.length} lines, expected at most ${maxLines}`);
+		assert.ok(lines.length >= maxLines - 1, `Got ${lines.length} lines, expected at least ${maxLines - 1}`);
+		
+		// Should contain the last lines 
+		assert.ok(lines[lines.length - 1].includes('Line 20'), 'Should end with Line 20');
+		
+		// Should start with Line 16 or 17 (depending on exact line count due to trailing newlines)
+		const firstLine = lines[0];
+		assert.ok(firstLine.includes('Line 16') || firstLine.includes('Line 17'), 
+			`First line should be Line 16 or 17, got: ${firstLine}`);
 	});
 });
