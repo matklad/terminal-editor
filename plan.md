@@ -88,6 +88,7 @@ which are not obvious from the step destription itself.
   lines.
   Implementation notes: Added maxOutputLines property (default 50) and setMaxOutputLines() method
   for configurability. Output combines stdout and stderr, limiting to last N lines when exceeded.
+- [ ] implement settings for line limit, such that the user can adjust that.
 - [ ] change `Terminal.status` function to return runtime and status informatino. Runtime should  be
   consice, human readable: `1m 3s`.
 - [ ] Implement `.run` user-visible command. It should execute currnt command line. It should also
