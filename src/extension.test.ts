@@ -1,9 +1,16 @@
 import * as assert from 'assert';
 
 import * as vscode from 'vscode';
-import { resetForTesting, getTerminalForTesting } from './extension';
+import { resetForTesting, getTerminalForTesting, syncPending, waitForSync } from './extension';
 import { parseCommand, Terminal, TerminalSettings } from './model';
 import { createSnapshotTester } from './snapshot';
+
+// Test helper that waits for both completion and sync
+async function wait(): Promise<void> {
+	const terminal = getTerminalForTesting();
+	await terminal.waitForCompletion();
+	await waitForSync();
+}
 
 // Helper functions for common test commands using node -e
 function manyLinesCommand(lineCount: number): string {

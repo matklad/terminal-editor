@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
+import { syncPending } from './extension';
 
 export interface TerminalSettings {
     maxOutputLines(): number;

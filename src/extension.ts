@@ -4,7 +4,8 @@ import { Terminal, TerminalSettings, TerminalEvents } from './model';
 let terminal: Terminal;
 let runtimeUpdateInterval: NodeJS.Timeout | undefined;
 let syncRunning = false;
-let syncPending = false;
+export let syncPending = false;
+let syncCompletionResolvers: (() => void)[] = [];
 
 class VSCodeTerminalSettings implements TerminalSettings {
 	maxOutputLines(): number {
@@ -21,12 +22,24 @@ export function resetForTesting() {
 	}
 	syncRunning = false;
 	syncPending = false;
+	syncCompletionResolvers = [];
 	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents());
 }
 
 // Test helper function to get terminal instance
 export function getTerminalForTesting(): Terminal {
 	return terminal;
+}
+
+// Test helper function to wait for sync to complete
+export async function waitForSync(): Promise<void> {
+	if (!syncRunning && !syncPending) {
+		return;
+	}
+
+	return new Promise<void>(resolve => {
+		syncCompletionResolvers.push(resolve);
+	});
 }
 
 function createTerminalEvents(): TerminalEvents {
@@ -153,6 +166,11 @@ async function sync(editor: vscode.TextEditor) {
 		} while (syncPending);
 	} finally {
 		syncRunning = false;
+
+		// Notify all waiting promises that sync is complete
+		const resolvers = syncCompletionResolvers;
+		syncCompletionResolvers = [];
+		resolvers.forEach(resolve => resolve());
 	}
 }
 
