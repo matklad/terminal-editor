@@ -130,15 +130,33 @@ async function reveal() {
 	// Create new terminal editor
 	const uri = vscode.Uri.parse('terminal-editor:///terminal.terminal');
 	const document = await vscode.workspace.openTextDocument(uri);
-	terminalEditor = await vscode.window.showTextDocument(document);
+	terminalEditor = await vscode.window.showTextDocument(document, vscode.ViewColumn.Two);
 
 	await sync();
+	
+	// Set cursor to first line
+	const position = new vscode.Position(0, 0);
+	terminalEditor.selection = new vscode.Selection(position, position);
 }
 
 function run() {
 	vscode.window.showInformationMessage('Terminal Editor: Run command executed!');
 }
 
-function dwim() {
-	vscode.window.showInformationMessage('Terminal Editor: Do What I Mean command executed!');
+async function dwim() {
+	// Check if terminal editor already exists and is visible
+	const visibleEditors = vscode.window.visibleTextEditors;
+	const existingEditor = visibleEditors.find(editor =>
+		editor.document.uri.scheme === 'terminal-editor'
+	);
+
+	if (existingEditor) {
+		// Terminal is revealed, focus it if not already focused
+		if (vscode.window.activeTextEditor !== existingEditor) {
+			await vscode.window.showTextDocument(existingEditor.document, vscode.ViewColumn.Two);
+		}
+	} else {
+		// Terminal is not revealed, reveal it
+		await reveal();
+	}
 }
