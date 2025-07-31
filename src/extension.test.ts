@@ -3,6 +3,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { resetForTesting, getTerminalForTesting } from './extension';
 import { parseCommand, Terminal, TerminalSettings } from './model';
+import { createSnapshotTester } from './snapshot';
 
 // Helper functions for common test commands using node -e
 function manyLinesCommand(lineCount: number): string {
@@ -35,6 +36,7 @@ function findTerminalDocument(): vscode.TextDocument | undefined {
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
+	const snapshot = createSnapshotTester();
 
 	setup(async () => {
 		// Close all editors
@@ -57,10 +59,9 @@ suite('Extension Test Suite', () => {
 		const doc = findTerminalDocument();
 		assert.ok(doc, 'Terminal document should be created');
 
-		// Check that the document has expected content
+		// Check that the document has expected content using snapshot
 		const text = doc.getText();
-		assert.strictEqual(text, '\n\n= =\n\n');
-		// No process output expected initially, so just check that it doesn't crash
+		snapshot.expectSnapshot('reveal-command-creates-terminal', text);
 	});
 
 	test('Second reveal command does not create duplicate', async () => {
@@ -243,6 +244,8 @@ suite('Terminal Configuration Tests', () => {
 });
 
 suite('Run Command Tests', () => {
+	const snapshot = createSnapshotTester();
+
 	setup(async () => {
 		// Close all editors
 		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
@@ -278,10 +281,9 @@ suite('Run Command Tests', () => {
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
 
-		// Check that the output contains the expected result
+		// Check that the output contains the expected result using snapshot
 		const text = activeEditor.document.getText();
-		const expectedOutput = `${command}\n\n\n time: 0s\n\n= time: 0s =\n\nHello World\n`;
-		assert.strictEqual(text, expectedOutput);
+		snapshot.expectSnapshot('run-command-simple-output', text);
 	});
 
 	test('Run command handles command with error exit code', async () => {
@@ -305,10 +307,9 @@ suite('Run Command Tests', () => {
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
 
-		// Check that the output shows error exit code
+		// Check that the output shows error exit code using snapshot
 		const text = activeEditor.document.getText();
-		const expectedErrorOutput = `${command}\n\n time: 0s\n= time: 0s =\n\n`;
-		assert.strictEqual(text, expectedErrorOutput);
+		snapshot.expectSnapshot('run-command-error-exit-code', text);
 	});
 
 	test('Run command shows runtime updates', async function() {
@@ -342,7 +343,7 @@ suite('Run Command Tests', () => {
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
 		text = activeEditor.document.getText();
-		assert.ok(text.includes('Done sleeping'), `Expected 'Done sleeping' output, got: ${text}`);
+		snapshot.expectSnapshot('run-command-runtime-updates-final', text);
 	});
 
 	test('Run command with no terminal editor shows error', async () => {
@@ -401,9 +402,8 @@ suite('Run Command Tests', () => {
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
 
-		// Check that we got output from the second command
+		// Check that we got output from the second command using snapshot
 		const text = activeEditor.document.getText();
-		const expectedOutput = `${quickCommand}\n\n= time: 0s =\n\nHello World\n`;
-		assert.strictEqual(text, expectedOutput);
+		snapshot.expectSnapshot('run-command-kills-previous-process', text);
 	});
 });

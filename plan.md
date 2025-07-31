@@ -28,10 +28,23 @@ The extension is just three files:
   Code API.
 * `src/extension.tests.ts` are the tests.
 
+## Testing
+
+The tests use snapshot testing to verify output format. Snapshots are stored in `src/__snapshots__/` and should be committed to git.
+
+To update snapshots after fixing issues:
+```bash
+UPDATE_SNAPSHOTS=true npm run test
+```
+
+## Plan
+
 Here's a plan for creating extension step-by step. After each step is finished, run `npm run test`
 and `npm run lint` to make sure there are no problems, mark the step as done with `[X]` in this
 file. Optionally add implementaiton notes for future readers if there are some non-trivial details
 which are not obvious from the step destription itself.
+
+This will regenerate all snapshot files with the current test output.
 
 - [X] Remove the scaffolding command, and add three new commands with `terminal-editor.` prefix:
   `reveal`, `run`, and `dwim`.
