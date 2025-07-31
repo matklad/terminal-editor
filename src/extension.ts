@@ -14,6 +14,15 @@ class VSCodeTerminalSettings implements TerminalSettings {
 	}
 }
 
+function getWorkspaceRoot(): string {
+	// Get the first workspace folder if available, otherwise use current working directory
+	const workspaceFolders = vscode.workspace.workspaceFolders;
+	if (workspaceFolders && workspaceFolders.length > 0) {
+		return workspaceFolders[0].uri.fsPath;
+	}
+	return process.cwd();
+}
+
 // Test helper function to reset state
 export function resetForTesting() {
 	if (runtimeUpdateInterval) {
@@ -23,7 +32,7 @@ export function resetForTesting() {
 	syncRunning = false;
 	syncPending = false;
 	syncCompletionResolvers = [];
-	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents());
+	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents(), getWorkspaceRoot());
 }
 
 // Test helper function to get terminal instance
@@ -63,7 +72,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	console.log('Congratulations, your extension "terminal-editor" is now active!');
 
-	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents());
+	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents(), getWorkspaceRoot());
 
 	const fileSystemProvider = new EphemeralFileSystem();
 	context.subscriptions.push(

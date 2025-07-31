@@ -30,10 +30,12 @@ export class Terminal {
     private currentProcess?: ProcessInfo;
     private settings: TerminalSettings;
     private events: TerminalEvents;
+    private workingDirectory: string;
 
-    constructor(settings: TerminalSettings, events: TerminalEvents = {}) {
+    constructor(settings: TerminalSettings, events: TerminalEvents = {}, workingDirectory?: string) {
         this.settings = settings;
         this.events = events;
+        this.workingDirectory = workingDirectory || process.cwd();
     }
 
     status(): { text: string } {
@@ -100,7 +102,7 @@ export class Terminal {
 
         // Start new process
         const [program, ...args] = parsed.tokens;
-        const process = spawn(program, args);
+        const process = spawn(program, args, { cwd: this.workingDirectory });
 
         let completionResolve: (code: number) => void;
         const completion = new Promise<number>((resolve) => {

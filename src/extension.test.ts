@@ -269,6 +269,26 @@ suite('Terminal Configuration Tests', () => {
 		const output = terminal.output();
 		assert.ok(output.text.includes('ENOENT'), `Expected ENOENT error message, got: ${output.text}`);
 	});
+
+	test('Terminal respects working directory', async () => {
+		const mockSettings: TerminalSettings = {
+			maxOutputLines: () => 50
+		};
+		
+		// Create terminal with specific working directory
+		const testWorkingDir = '/tmp';
+		const terminal = new Terminal(mockSettings, {}, testWorkingDir);
+
+		// Run pwd command to verify working directory
+		terminal.run('pwd');
+
+		// Wait for the process to complete
+		await terminal.waitForCompletion();
+
+		// Check that the output shows the correct working directory
+		const output = terminal.output();
+		assert.ok(output.text.includes('/tmp'), `Expected output to contain /tmp, got: ${output.text}`);
+	});
 });
 
 suite('Run Command Tests', () => {
@@ -540,5 +560,33 @@ suite('DWIM Command Tests', () => {
 		// Check that the command was executed using snapshot
 		const text = activeEditor.document.getText();
 		snapshot.expectSnapshot('dwim-runs-command-when-focused', text);
+	});
+
+	test('Terminal uses workspace root as working directory', async () => {
+		// Create terminal
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		// Get the terminal editor and add pwd command
+		const activeEditor = vscode.window.activeTextEditor;
+		assert.ok(activeEditor);
+		assert.strictEqual(activeEditor.document.uri.scheme, 'terminal-editor');
+
+		// Insert pwd command to check working directory
+		const command = 'node -e "console.log(process.cwd())"';
+		await activeEditor.edit(editBuilder => {
+			editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+		});
+
+		// Run the command
+		await vscode.commands.executeCommand('terminal-editor.run');
+
+		// Wait for completion
+		const terminal = getTerminalForTesting();
+		await terminal.waitForCompletion();
+
+		// Check that the output shows the current working directory
+		const text = activeEditor.document.getText();
+		assert.ok(text.includes('/Users/matklad/p/terminal-editor'), 
+			`Expected output to contain workspace root path, got: ${text}`);
 	});
 });

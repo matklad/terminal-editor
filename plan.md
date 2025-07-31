@@ -126,7 +126,14 @@ This will regenerate all snapshot files with the current test output.
   'node -e' to avoid dependencies. Tests cover command execution, error handling, runtime updates,
   event callbacks, and edge cases.
 - [X] dwim should run current command, if the terminal is focused or visible
-  Implementation notes: Modified dwim() function to check if terminal is focused and run command if so. 
-  Added comprehensive test suite covering all dwim scenarios: revealing terminal when not visible, 
-  focusing terminal when visible but not focused, and running command when terminal is focused. 
+  Implementation notes: Modified dwim() function to check if terminal is focused and run command if so.
+  Added comprehensive test suite covering all dwim scenarios: revealing terminal when not visible,
+  focusing terminal when visible but not focused, and running command when terminal is focused.
   Exported visibleTerminal() function from extension.ts to enable proper test isolation.
+- [X] add working directory to the Terminal. When creating terminal in extension.ts, initialize
+  working direcory with the current workspace root directory.
+  Implementation notes: Added workingDirectory property to Terminal class constructor and passed it
+  to spawn() options as { cwd: this.workingDirectory }. Created getWorkspaceRoot() helper function 
+  that returns the first workspace folder's fsPath or falls back to process.cwd(). Updated both 
+  Terminal instantiations in extension.ts to use workspace root. Added unit test verifying Terminal 
+  respects working directory and integration test confirming workspace root is used correctly.
