@@ -248,6 +248,27 @@ suite('Terminal Configuration Tests', () => {
 		assert.ok(firstLine.includes('Line 16') || firstLine.includes('Line 17'),
 			`First line should be Line 16 or 17, got: ${firstLine}`);
 	});
+
+	test('Terminal handles non-existent command', async () => {
+		const mockSettings: TerminalSettings = {
+			maxOutputLines: () => 50
+		};
+		const terminal = new Terminal(mockSettings);
+
+		// Run a command that doesn't exist
+		terminal.run('this-command-definitely-does-not-exist-12345');
+
+		// Wait for the process to complete
+		await terminal.waitForCompletion();
+
+		// Check that the terminal shows completed status
+		const status = terminal.status();
+		assert.ok(status.text.includes('status: 127'), `Expected status with exit code 127, got: ${status.text}`);
+
+		// Check that error message is in output
+		const output = terminal.output();
+		assert.ok(output.text.includes('ENOENT'), `Expected ENOENT error message, got: ${output.text}`);
+	});
 });
 
 suite('Run Command Tests', () => {
@@ -412,5 +433,32 @@ suite('Run Command Tests', () => {
 		// Check that we got output from the second command using snapshot
 		const text = activeEditor.document.getText();
 		snapshot.expectSnapshot('run-command-kills-previous-process', text);
+	});
+
+	test('Run command handles non-existent command', async () => {
+		// Create terminal
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+
+		// Get the terminal editor
+		const activeEditor = vscode.window.activeTextEditor;
+		assert.ok(activeEditor);
+
+		// Insert a command that doesn't exist
+		const nonExistentCommand = 'this-command-definitely-does-not-exist-12345';
+		await activeEditor.edit(editBuilder => {
+			editBuilder.replace(new vscode.Range(0, 0, 0, 0), nonExistentCommand);
+		});
+
+		// Run the command
+		await vscode.commands.executeCommand('terminal-editor.run');
+
+		// Wait for completion and sync
+		const terminal = getTerminalForTesting();
+		await terminal.waitForCompletion();
+		await waitForSync();
+
+		// Check that the output shows appropriate error using snapshot
+		const text = activeEditor.document.getText();
+		snapshot.expectSnapshot('run-command-non-existent-command', text);
 	});
 });

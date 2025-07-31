@@ -102,13 +102,9 @@ export class Terminal {
         const [program, ...args] = parsed.tokens;
         const process = spawn(program, args);
 
-        // Create completion promise that resolves when process exits
+        let completionResolve: (code: number) => void;
         const completion = new Promise<number>((resolve) => {
-            process.on('close', (code: number) => {
-                processInfo.exitCode = code;
-                this.events.onStateChange?.();
-                resolve(code);
-            });
+            completionResolve = resolve;
         });
 
         const processInfo: ProcessInfo = {
@@ -123,17 +119,37 @@ export class Terminal {
 
         this.currentProcess = processInfo;
 
-        // Capture stdout
-        process.stdout.on('data', (data: Buffer) => {
-            processInfo.stdout += data.toString();
-            this.events.onOutput?.();
+        // Handle process close (normal exit)
+        process.on('close', (code: number) => {
+            processInfo.exitCode = code;
+            this.events.onStateChange?.();
+            completionResolve(code);
         });
 
-        // Capture stderr
-        process.stderr.on('data', (data: Buffer) => {
-            processInfo.stderr += data.toString();
+        // Handle spawn errors (e.g., command not found)
+        process.on('error', (error: Error) => {
+            processInfo.stderr += error.message + '\n';
+            processInfo.exitCode = 127; // Standard exit code for command not found
             this.events.onOutput?.();
+            this.events.onStateChange?.();
+            completionResolve(127);
         });
+
+        // Capture stdout (only if it exists)
+        if (process.stdout) {
+            process.stdout.on('data', (data: Buffer) => {
+                processInfo.stdout += data.toString();
+                this.events.onOutput?.();
+            });
+        }
+
+        // Capture stderr (only if it exists)
+        if (process.stderr) {
+            process.stderr.on('data', (data: Buffer) => {
+                processInfo.stderr += data.toString();
+                this.events.onOutput?.();
+            });
+        }
 
         // Notify that state has changed (process started)
         this.events.onStateChange?.();
