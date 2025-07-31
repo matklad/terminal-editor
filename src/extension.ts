@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { Terminal, TerminalSettings } from './model';
+import { Terminal, TerminalSettings, TerminalEvents } from './model';
 
 let terminal: Terminal;
+let runtimeUpdateInterval: NodeJS.Timeout | undefined;
 
 class VSCodeTerminalSettings implements TerminalSettings {
 	maxOutputLines(): number {
@@ -12,14 +13,40 @@ class VSCodeTerminalSettings implements TerminalSettings {
 
 // Test helper function to reset state
 export function resetForTesting() {
-	terminal = new Terminal(new VSCodeTerminalSettings());
+	if (runtimeUpdateInterval) {
+		clearInterval(runtimeUpdateInterval);
+		runtimeUpdateInterval = undefined;
+	}
+	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents());
+}
+
+// Test helper function to get terminal instance
+export function getTerminalForTesting(): Terminal {
+	return terminal;
+}
+
+function createTerminalEvents(): TerminalEvents {
+	return {
+		onOutput: () => {
+			const editor = visibleTerminal();
+			if (editor) {
+				sync(editor);
+			}
+		},
+		onStateChange: () => {
+			const editor = visibleTerminal();
+			if (editor) {
+				sync(editor);
+			}
+		}
+	};
 }
 
 export function activate(context: vscode.ExtensionContext) {
 
 	console.log('Congratulations, your extension "terminal-editor" is now active!');
 
-	terminal = new Terminal(new VSCodeTerminalSettings());
+	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents());
 
 	const fileSystemProvider = new EphemeralFileSystem();
 	context.subscriptions.push(
@@ -33,7 +60,12 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(revealCommand, runCommand, dwimCommand);
 }
 
-export function deactivate() { }
+export function deactivate() {
+	if (runtimeUpdateInterval) {
+		clearInterval(runtimeUpdateInterval);
+		runtimeUpdateInterval = undefined;
+	}
+}
 
 class EphemeralFileSystem implements vscode.FileSystemProvider {
 	readonly onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>().event;
@@ -156,8 +188,46 @@ async function reveal() {
 	editor.selection = new vscode.Selection(position, position);
 }
 
-function run() {
-	vscode.window.showInformationMessage('Terminal Editor: Run command executed!');
+async function run() {
+	const editor = visibleTerminal();
+	if (!editor) {
+		vscode.window.showErrorMessage('Terminal Editor: No terminal editor found');
+		return;
+	}
+
+	const { command } = findInput(editor);
+	if (!command.trim()) {
+		vscode.window.showErrorMessage('Terminal Editor: No command to run');
+		return;
+	}
+
+	// Clear runtime update interval if running
+	if (runtimeUpdateInterval) {
+		clearInterval(runtimeUpdateInterval);
+		runtimeUpdateInterval = undefined;
+	}
+
+	// Start the process
+	terminal.run(command);
+
+	// Immediately sync to clear old result
+	await sync(editor);
+
+	// Set up runtime update interval while command is running
+	runtimeUpdateInterval = setInterval(async () => {
+		if (!terminal.isRunning()) {
+			if (runtimeUpdateInterval) {
+				clearInterval(runtimeUpdateInterval);
+				runtimeUpdateInterval = undefined;
+			}
+			return;
+		}
+
+		const currentEditor = visibleTerminal();
+		if (currentEditor) {
+			await sync(currentEditor);
+		}
+	}, 1000);
 }
 
 async function dwim() {

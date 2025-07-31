@@ -99,8 +99,16 @@ which are not obvious from the step destription itself.
   consice, human readable: `1m 3s`.
   Implementation notes: Added formatRuntime() method that formats duration as "Xs", "Xm Ys" format.
   Status shows "time: Xm Ys status: N" for completed processes and "time: Xm Ys" for active ones.
-- [ ] Implement `.run` user-visible command. It should execute currnt command line. It should also
+- [X] Implement `.run` user-visible command. It should execute currnt command line. It should also
   wire up callbacks/events such that sync function is called:
   - immediately after the command is run, to clear old result
   - after new output
   - every second, while the command is runnig, to update runtime.
+  Implementation notes: Added TerminalEvents interface with onOutput and onStateChange callbacks.
+  Terminal constructor now accepts events parameter. The run command extracts current command line,
+  executes it via terminal.run(), immediately syncs to clear old result, then sets up 1-second
+  interval to update runtime while process is running. Events trigger sync automatically on output
+  and state changes. Added cleanup in deactivate() to clear intervals. Added comprehensive tests
+  using helper functions (manyLinesCommand, sleepCommand, fastCommand, errorCommand) that use
+  'node -e' to avoid dependencies. Tests cover command execution, error handling, runtime updates,
+  event callbacks, and edge cases.

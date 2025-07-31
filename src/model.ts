@@ -4,6 +4,11 @@ export interface TerminalSettings {
     maxOutputLines(): number;
 }
 
+export interface TerminalEvents {
+    onOutput?: () => void;
+    onStateChange?: () => void;
+}
+
 export interface ParsedCommand {
     tokens: string[];
     cursorTokenIndex?: number;
@@ -23,9 +28,11 @@ interface ProcessInfo {
 export class Terminal {
     private currentProcess?: ProcessInfo;
     private settings: TerminalSettings;
+    private events: TerminalEvents;
 
-    constructor(settings: TerminalSettings) {
+    constructor(settings: TerminalSettings, events: TerminalEvents = {}) {
         this.settings = settings;
+        this.events = events;
     }
 
     status(): { text: string } {
@@ -98,6 +105,7 @@ export class Terminal {
         const completion = new Promise<number>((resolve) => {
             process.on('close', (code: number) => {
                 processInfo.exitCode = code;
+                this.events.onStateChange?.();
                 resolve(code);
             });
         });
@@ -117,12 +125,21 @@ export class Terminal {
         // Capture stdout
         process.stdout.on('data', (data: Buffer) => {
             processInfo.stdout += data.toString();
+            this.events.onOutput?.();
         });
 
         // Capture stderr
         process.stderr.on('data', (data: Buffer) => {
             processInfo.stderr += data.toString();
+            this.events.onOutput?.();
         });
+
+        // Notify that state has changed (process started)
+        this.events.onStateChange?.();
+    }
+
+    isRunning(): boolean {
+        return this.currentProcess !== undefined && this.currentProcess.exitCode === undefined;
     }
 
     async waitForCompletion(): Promise<void> {
