@@ -69,3 +69,7 @@ file, and optionally add short implementation notes next to the step for future 
   - If Reveal create a new terminal, the cursor should be on the first line
   - Implement the `dwim` command, which reveals the terminal if its not already revealed, and
     focuses it if it is revealed ant not focused.
+- [ ] In the model.ts, add a `parseCommand` function that parses terminal command string into a list
+  of program name and arguments. It should support simple quoting with double quotes to allow
+  arguments with spaces. Besides the string, this function should also accept the cursor position,
+  and return the index of the token the cursor is at, as well as within-token offset, for completion. If the cursor is on the whitespace between the tokens, the index/offset are undefined. Add unit-tests.
