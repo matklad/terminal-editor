@@ -17,13 +17,30 @@ interface ProcessInfo {
 
 export class Terminal {
     private currentProcess?: ProcessInfo;
+    private maxOutputLines = 50;
+
+    setMaxOutputLines(maxLines: number): void {
+        this.maxOutputLines = maxLines;
+    }
 
     status(): { text: string } {
         return { text: "= =" };
     }
 
     output(): { text: string } {
-        return { text: "hello world" };
+        if (!this.currentProcess) {
+            return { text: "" };
+        }
+
+        const combinedOutput = this.currentProcess.stdout + this.currentProcess.stderr;
+        const lines = combinedOutput.split('\n');
+        
+        if (lines.length <= this.maxOutputLines) {
+            return { text: combinedOutput };
+        }
+
+        const limitedLines = lines.slice(-this.maxOutputLines);
+        return { text: limitedLines.join('\n') };
     }
 
     run(commandString: string): void {
