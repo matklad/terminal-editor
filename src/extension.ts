@@ -117,7 +117,7 @@ class EphemeralFileSystem implements vscode.FileSystemProvider {
 	rename(): void {}
 }
 
-function visibleTerminal(): vscode.TextEditor | undefined {
+export function visibleTerminal(): vscode.TextEditor | undefined {
 	return vscode.window.visibleTextEditors.find(editor =>
 		editor.document.uri.scheme === 'terminal-editor'
 	);
@@ -280,8 +280,12 @@ async function dwim() {
 	const editor = visibleTerminal();
 
 	if (editor) {
-		// Terminal is revealed, focus it if not already focused
-		if (vscode.window.activeTextEditor !== editor) {
+		// Terminal is revealed, check if it's focused
+		if (vscode.window.activeTextEditor === editor) {
+			// Terminal is focused, run the current command
+			await run();
+		} else {
+			// Terminal is visible but not focused, focus it
 			await vscode.window.showTextDocument(editor.document, vscode.ViewColumn.Two);
 		}
 	} else {

@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 
 import * as vscode from 'vscode';
-import { resetForTesting, getTerminalForTesting, syncPending, waitForSync } from './extension';
+import { resetForTesting, getTerminalForTesting, syncPending, waitForSync, visibleTerminal } from './extension';
 import { parseCommand, Terminal, TerminalSettings } from './model';
 import { createSnapshotTester } from './snapshot';
 
@@ -460,5 +460,85 @@ suite('Run Command Tests', () => {
 		// Check that the output shows appropriate error using snapshot
 		const text = activeEditor.document.getText();
 		snapshot.expectSnapshot('run-command-non-existent-command', text);
+	});
+});
+
+suite('DWIM Command Tests', () => {
+	const snapshot = createSnapshotTester();
+
+	setup(async () => {
+		// Close all editors
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+
+		// Reset the global terminal instance
+		resetForTesting();
+	});
+
+	teardown(async () => {
+		// Clean up after each test
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+	});
+
+	test('DWIM reveals terminal when not visible', async () => {
+		// Make sure no terminal editor is visible (may exist but not visible)
+		const visibleEditor = visibleTerminal();
+		assert.strictEqual(visibleEditor, undefined, 'No terminal should be visible initially');
+
+		// Execute dwim command
+		await vscode.commands.executeCommand('terminal-editor.dwim');
+
+		// Check that terminal is now active
+		const activeEditor = vscode.window.activeTextEditor;
+		assert.ok(activeEditor, 'Terminal editor should be active');
+		assert.strictEqual(activeEditor.document.uri.scheme, 'terminal-editor');
+	});
+
+	test('DWIM focuses terminal when visible but not focused', async () => {
+		// Create terminal first
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		// Focus away from terminal by creating a new text document
+		const newDoc = await vscode.workspace.openTextDocument({ content: 'some other content' });
+		await vscode.window.showTextDocument(newDoc);
+		
+		// Verify terminal is not focused
+		const activeEditor = vscode.window.activeTextEditor;
+		assert.ok(activeEditor);
+		assert.notStrictEqual(activeEditor.document.uri.scheme, 'terminal-editor');
+
+		// Execute dwim command
+		await vscode.commands.executeCommand('terminal-editor.dwim');
+
+		// Check that terminal is now focused
+		const newActiveEditor = vscode.window.activeTextEditor;
+		assert.ok(newActiveEditor, 'Terminal editor should be active');
+		assert.strictEqual(newActiveEditor.document.uri.scheme, 'terminal-editor');
+	});
+
+	test('DWIM runs command when terminal is focused', async () => {
+		// Create and focus terminal
+		await vscode.commands.executeCommand('terminal-editor.reveal');
+		
+		// Get the terminal editor and add a command
+		const activeEditor = vscode.window.activeTextEditor;
+		assert.ok(activeEditor);
+		assert.strictEqual(activeEditor.document.uri.scheme, 'terminal-editor');
+
+		// Insert a simple command
+		const command = fastCommand();
+		await activeEditor.edit(editBuilder => {
+			editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+		});
+
+		// Execute dwim command (should run the command since terminal is focused)
+		await vscode.commands.executeCommand('terminal-editor.dwim');
+
+		// Wait for completion
+		const terminal = getTerminalForTesting();
+		await terminal.waitForCompletion();
+
+		// Check that the command was executed using snapshot
+		const text = activeEditor.document.getText();
+		snapshot.expectSnapshot('dwim-runs-command-when-focused', text);
 	});
 });

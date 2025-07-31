@@ -125,4 +125,8 @@ This will regenerate all snapshot files with the current test output.
   using helper functions (manyLinesCommand, sleepCommand, fastCommand, errorCommand) that use
   'node -e' to avoid dependencies. Tests cover command execution, error handling, runtime updates,
   event callbacks, and edge cases.
-- [ ] dwim should run current command, if the terminal is focused or visible
+- [X] dwim should run current command, if the terminal is focused or visible
+  Implementation notes: Modified dwim() function to check if terminal is focused and run command if so. 
+  Added comprehensive test suite covering all dwim scenarios: revealing terminal when not visible, 
+  focusing terminal when visible but not focused, and running command when terminal is focused. 
+  Exported visibleTerminal() function from extension.ts to enable proper test isolation.
