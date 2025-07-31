@@ -29,7 +29,36 @@ export class Terminal {
     }
 
     status(): { text: string } {
-        return { text: "= =" };
+        if (!this.currentProcess) {
+            return { text: "= =" };
+        }
+
+        const runtime = this.formatRuntime();
+        const status = this.currentProcess.exitCode !== undefined
+            ? ` status: ${this.currentProcess.exitCode}`
+            : "";
+
+        return { text: `= time: ${runtime}${status} =` };
+    }
+
+    private formatRuntime(): string {
+        if (!this.currentProcess) {
+            return "0s";
+        }
+
+        const now = new Date();
+
+        const durationMs = now.getTime() - this.currentProcess.startTime.getTime();
+        const durationSeconds = Math.floor(durationMs / 1000);
+
+        if (durationSeconds < 60) {
+            return `${durationSeconds}s`;
+        }
+
+        const minutes = Math.floor(durationSeconds / 60);
+        const seconds = durationSeconds % 60;
+
+        return `${minutes}m ${seconds}s`;
     }
 
     output(): { text: string } {
