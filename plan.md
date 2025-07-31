@@ -41,3 +41,26 @@ file, and optionally add short implementation notes next to the step for future 
   and the output text respectively. They will return a `{ text: string }` object to allow for
   extensibility (we'll return highlights in the future). Use `= =` for status and `"hello world"`
   for output for now.
+- [ ] Show the output of the Terminal:
+  - Add `terminal-editor` language
+  - In extension.ts, add EphemeralFileSystem, whose job is only to prevent VS Code from showing save
+    dialog. Important: the source of truth for all the state is the `Terminal` in the `model.ts`,
+    and active in-memory editor's state. FileSystem is a no-op, just to make sure that the document
+    isn't dirty from VS Code's POV
+  - Implement terminal singleton. In extension.ts, create a global variable holding an instance of
+    the terminal.
+  - Implement "editor" singleton. Add code to the `reveal` command to show an existing terminal
+    editor, if there's one, or create new if there isn't. At the start, assert that there's zero or
+    one terminal editors.
+  - Add `sync` function to `extension.ts` which synchronizes the state of the editor with the
+    logical state of the terminal. Refer to the example at the begging of the document. Key point:
+    the command is typed by the user, it exists only in the editor's state and is not mirrored in
+    the `Terminal`, user is the source of truth for the command. The status and output are managed
+    by the `Terminal`. To synchronize, find where the user input ends, and use editor commands to
+    replace the rest. Note that the document can be completely empty at the beginning, in that case,
+    use blank line as the user input, and add another blank to separate the status line, for two
+    blanks in total at the beginning of the file.
+  - Call `sync` every time the editor is created/revealed.
+  - Add a test that checks that `reveal` command creates a terminal, and that second revel command
+    doesn't create a duplicate. Also test cases where the terminal exists, and not visible, and
+    where terminal is created, closed, and re-created.
