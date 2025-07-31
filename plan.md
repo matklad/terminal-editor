@@ -125,3 +125,4 @@ This will regenerate all snapshot files with the current test output.
   using helper functions (manyLinesCommand, sleepCommand, fastCommand, errorCommand) that use
   'node -e' to avoid dependencies. Tests cover command execution, error handling, runtime updates,
   event callbacks, and edge cases.
+- [ ] dwim should run current command, if the terminal is focused or visible
