@@ -83,3 +83,13 @@ which are not obvious from the step destription itself.
     standard error, and the original comand line.
   - As an invariant, at most one process at a time can be executed. If `run` is called while the
     process is already running, the old process is first killed, and then a new is started.
+- [ ] change `Terminal.output` function to return process stdout and stderr. The total amount of
+  lines returned should be limited. The limit shold be configurable by the user, and deafult to 50
+  lines.
+- [ ] change `Terminal.status` function to return runtime and status informatino. Runtime should  be
+  consice, human readable: `1m 3s`.
+- [ ] Implement `.run` user-visible command. It should execute currnt command line. It should also
+  wire up callbacks/events such that sync function is called:
+  - immediately after the command is run, to clear old result
+  - after new output
+  - every second, while the command is runnig, to update runtime.
