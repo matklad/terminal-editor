@@ -3,7 +3,6 @@
   "displayName": "terminal-editor",
   "description": "A terminal in your editor",
   "repository": "https://github.com/matklad/terminal-editor",
-  "license": "MIT",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.102.0"
