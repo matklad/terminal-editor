@@ -10,7 +10,7 @@ let syncCompletionResolvers: (() => void)[] = [];
 class VSCodeTerminalSettings implements TerminalSettings {
 	maxOutputLines(): number {
 		const config = vscode.workspace.getConfiguration('terminal-editor');
-		return config.get<number>('maxOutputLines', 50);
+		return config.get<number>('maxOutputLines', 40);
 	}
 }
 
