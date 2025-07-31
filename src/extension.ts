@@ -67,23 +67,38 @@ function visibleTerminal(): vscode.TextEditor | undefined {
 	);
 }
 
-async function sync(editor: vscode.TextEditor) {
+function findInput(editor: vscode.TextEditor): { command: string; splitLine: number } {
 	const document = editor.document;
 	const text = document.getText();
-
-	// Find where user input ends (look for blank line or end of document)
 	const lines = text.split('\n');
-	let userInputEnd = 0;
 
+	// Handle completely empty input
+	if (text.trim() === '') {
+		return { command: '', splitLine: 0 };
+	}
+
+	// Find the first line that starts with '=' character
+	let splitLine = lines.length;
 	for (let i = 0; i < lines.length; i++) {
-		if (lines[i].trim() === '') {
-			userInputEnd = i;
+		if (lines[i].startsWith('=')) {
+			splitLine = i;
 			break;
 		}
 	}
 
+	// Extract user command (everything before the first non-user-input line)
+	const userLines = lines.slice(0, splitLine);
+	const command = userLines.join('\n').trim();
+
+	return { command, splitLine };
+}
+
+async function sync(editor: vscode.TextEditor) {
+	const document = editor.document;
+	const { command, splitLine } = findInput(editor);
+
 	// If document is empty, start with blank line as user input
-	if (text.trim() === '') {
+	if (command === '') {
 		const edit = new vscode.WorkspaceEdit();
 		const uri = document.uri;
 		const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
@@ -98,10 +113,9 @@ async function sync(editor: vscode.TextEditor) {
 	const outputText = terminal.output().text;
 	const newContent = statusText + '\n\n' + outputText;
 
-	const startLine = userInputEnd + 1;
 	const edit = new vscode.WorkspaceEdit();
 	const uri = document.uri;
-	const range = new vscode.Range(startLine, 0, document.lineCount, 0);
+	const range = new vscode.Range(splitLine, 0, document.lineCount, 0);
 	edit.replace(uri, range, '\n' + newContent);
 	await vscode.workspace.applyEdit(edit);
 }
