@@ -64,3 +64,8 @@ file, and optionally add short implementation notes next to the step for future 
   - Add a test that checks that `reveal` command creates a terminal, and that second revel command
     doesn't create a duplicate. Also test cases where the terminal exists, and not visible, and
     where terminal is created, closed, and re-created.
+- [ ] Reveal quality of life:
+  - Reveal into the second colum.
+  - If Reveal create a new terminal, the cursor should be on the first line
+  - Implement the `dwim` command, which reveals the terminal if its not already revealed, and
+    focuses it if it is revealed ant not focused.
