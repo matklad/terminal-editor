@@ -1,6 +1,5 @@
 node -e "console.error('This is an error'); process.exit(1)"
 
-
- time: 0s
 = time: 0s =
 
+This is an error

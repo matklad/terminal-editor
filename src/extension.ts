@@ -3,6 +3,8 @@ import { Terminal, TerminalSettings, TerminalEvents } from './model';
 
 let terminal: Terminal;
 let runtimeUpdateInterval: NodeJS.Timeout | undefined;
+let syncRunning = false;
+let syncPending = false;
 
 class VSCodeTerminalSettings implements TerminalSettings {
 	maxOutputLines(): number {
@@ -17,6 +19,8 @@ export function resetForTesting() {
 		clearInterval(runtimeUpdateInterval);
 		runtimeUpdateInterval = undefined;
 	}
+	syncRunning = false;
+	syncPending = false;
 	terminal = new Terminal(new VSCodeTerminalSettings(), createTerminalEvents());
 }
 
@@ -133,6 +137,26 @@ function findInput(editor: vscode.TextEditor): { command: string; splitLine: num
 }
 
 async function sync(editor: vscode.TextEditor) {
+	// If sync is already running, mark that another sync is needed
+	if (syncRunning) {
+		syncPending = true;
+		return;
+	}
+
+	syncRunning = true;
+
+	try {
+		// Keep syncing until no more syncs are pending
+		do {
+			syncPending = false;
+			await doSync(editor);
+		} while (syncPending);
+	} finally {
+		syncRunning = false;
+	}
+}
+
+async function doSync(editor: vscode.TextEditor) {
 	const document = editor.document;
 	const { command, splitLine } = findInput(editor);
 
@@ -154,7 +178,10 @@ async function sync(editor: vscode.TextEditor) {
 
 	const edit = new vscode.WorkspaceEdit();
 	const uri = document.uri;
-	const range = new vscode.Range(splitLine, 0, document.lineCount, 0);
+	const range = new vscode.Range(
+		new vscode.Position(splitLine - 1, 0),
+		document.positionAt(document.getText().length),
+	);
 	edit.replace(uri, range, '\n' + newContent);
 	await vscode.workspace.applyEdit(edit);
 }
