@@ -2,6 +2,7 @@ import * as assert from 'assert';
 
 import * as vscode from 'vscode';
 import { resetForTesting } from './extension';
+import { parseCommand } from './model';
 
 function findTerminalDocument(): vscode.TextDocument | undefined {
 	const terminalDocs = vscode.workspace.textDocuments.filter(doc => 
@@ -91,5 +92,99 @@ suite('Extension Test Suite', () => {
 		// Check that new terminal was created
 		const newDoc = findTerminalDocument();
 		assert.ok(newDoc, 'Terminal document should be recreated');
+	});
+});
+
+suite('parseCommand Tests', () => {
+	test('Simple command parsing', () => {
+		const result = parseCommand('git status');
+		assert.deepStrictEqual(result.tokens, ['git', 'status']);
+		assert.strictEqual(result.cursorTokenIndex, undefined);
+		assert.strictEqual(result.cursorTokenOffset, undefined);
+	});
+
+	test('Command with quoted arguments', () => {
+		const result = parseCommand('echo "hello world" test');
+		assert.deepStrictEqual(result.tokens, ['echo', 'hello world', 'test']);
+	});
+
+	test('Empty command', () => {
+		const result = parseCommand('');
+		assert.deepStrictEqual(result.tokens, []);
+	});
+
+	test('Command with multiple spaces', () => {
+		const result = parseCommand('  git   status   --short  ');
+		assert.deepStrictEqual(result.tokens, ['git', 'status', '--short']);
+	});
+
+	test('Cursor at beginning of first token', () => {
+		const result = parseCommand('git status', 0);
+		assert.strictEqual(result.cursorTokenIndex, 0);
+		assert.strictEqual(result.cursorTokenOffset, 0);
+	});
+
+	test('Cursor in middle of first token', () => {
+		const result = parseCommand('git status', 2);
+		assert.strictEqual(result.cursorTokenIndex, 0);
+		assert.strictEqual(result.cursorTokenOffset, 2);
+	});
+
+	test('Cursor at end of first token', () => {
+		const result = parseCommand('git status', 2);
+		assert.strictEqual(result.cursorTokenIndex, 0);
+		assert.strictEqual(result.cursorTokenOffset, 2);
+	});
+
+	test('Cursor on whitespace between tokens', () => {
+		const result = parseCommand('git status', 3);
+		assert.strictEqual(result.cursorTokenIndex, undefined);
+		assert.strictEqual(result.cursorTokenOffset, undefined);
+	});
+
+	test('Cursor at beginning of second token', () => {
+		const result = parseCommand('git status', 4);
+		assert.strictEqual(result.cursorTokenIndex, 1);
+		assert.strictEqual(result.cursorTokenOffset, 0);
+	});
+
+	test('Cursor at end of command', () => {
+		const result = parseCommand('git status', 10);
+		assert.strictEqual(result.cursorTokenIndex, 1);
+		assert.strictEqual(result.cursorTokenOffset, 6);
+	});
+
+	test('Cursor at end of command with trailing space', () => {
+		const result = parseCommand('git status ', 11);
+		assert.strictEqual(result.cursorTokenIndex, undefined);
+		assert.strictEqual(result.cursorTokenOffset, undefined);
+	});
+
+	test('Cursor in quoted string', () => {
+		const result = parseCommand('echo "hello world"', 8);
+		assert.strictEqual(result.cursorTokenIndex, 1);
+		assert.strictEqual(result.cursorTokenOffset, 2);
+	});
+
+	test('Cursor at quote start', () => {
+		const result = parseCommand('echo "hello world"', 5);
+		assert.strictEqual(result.cursorTokenIndex, 1);
+		assert.strictEqual(result.cursorTokenOffset, 0);
+	});
+
+	test('Multiple quoted arguments', () => {
+		const result = parseCommand('cmd "arg1" "arg2 with spaces"');
+		assert.deepStrictEqual(result.tokens, ['cmd', 'arg1', 'arg2 with spaces']);
+	});
+
+	test('Empty quoted string', () => {
+		const result = parseCommand('echo ""');
+		assert.deepStrictEqual(result.tokens, ['echo', '']);
+	});
+
+	test('Cursor in empty command', () => {
+		const result = parseCommand('', 0);
+		assert.strictEqual(result.cursorTokenIndex, undefined);
+		assert.strictEqual(result.cursorTokenOffset, undefined);
 	});
 });
