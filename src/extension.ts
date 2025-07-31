@@ -2,12 +2,10 @@ import * as vscode from 'vscode';
 import { Terminal } from './model';
 
 let terminal: Terminal;
-let terminalEditor: vscode.TextEditor | undefined;
 
 // Test helper function to reset state
 export function resetForTesting() {
 	terminal = new Terminal();
-	terminalEditor = undefined;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -63,12 +61,14 @@ class EphemeralFileSystem implements vscode.FileSystemProvider {
 	rename(): void {}
 }
 
-async function sync() {
-	if (!terminalEditor) {
-		return;
-	}
+function visibleTerminal(): vscode.TextEditor | undefined {
+	return vscode.window.visibleTextEditors.find(editor =>
+		editor.document.uri.scheme === 'terminal-editor'
+	);
+}
 
-	const document = terminalEditor.document;
+async function sync(editor: vscode.TextEditor) {
+	const document = editor.document;
 	const text = document.getText();
 
 	// Find where user input ends (look for blank line or end of document)
@@ -108,14 +108,10 @@ async function sync() {
 
 async function reveal() {
 	// Check if terminal editor already exists and is visible
-	const visibleEditors = vscode.window.visibleTextEditors;
-	const existingEditor = visibleEditors.find(editor =>
-		editor.document.uri.scheme === 'terminal-editor'
-	);
+	const existingEditor = visibleTerminal();
 
 	if (existingEditor) {
-		terminalEditor = existingEditor;
-		await sync();
+		await sync(existingEditor);
 		return;
 	}
 
@@ -130,13 +126,13 @@ async function reveal() {
 	// Create new terminal editor
 	const uri = vscode.Uri.parse('terminal-editor:///terminal.terminal');
 	const document = await vscode.workspace.openTextDocument(uri);
-	terminalEditor = await vscode.window.showTextDocument(document, vscode.ViewColumn.Two);
+	const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.Two);
 
-	await sync();
-	
+	await sync(editor);
+
 	// Set cursor to first line
 	const position = new vscode.Position(0, 0);
-	terminalEditor.selection = new vscode.Selection(position, position);
+	editor.selection = new vscode.Selection(position, position);
 }
 
 function run() {
@@ -145,15 +141,12 @@ function run() {
 
 async function dwim() {
 	// Check if terminal editor already exists and is visible
-	const visibleEditors = vscode.window.visibleTextEditors;
-	const existingEditor = visibleEditors.find(editor =>
-		editor.document.uri.scheme === 'terminal-editor'
-	);
+	const editor = visibleTerminal();
 
-	if (existingEditor) {
+	if (editor) {
 		// Terminal is revealed, focus it if not already focused
-		if (vscode.window.activeTextEditor !== existingEditor) {
-			await vscode.window.showTextDocument(existingEditor.document, vscode.ViewColumn.Two);
+		if (vscode.window.activeTextEditor !== editor) {
+			await vscode.window.showTextDocument(editor.document, vscode.ViewColumn.Two);
 		}
 	} else {
 		// Terminal is not revealed, reveal it
