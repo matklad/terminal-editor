@@ -36,8 +36,8 @@ file, and optionally add short implementation notes next to the step for future 
   `reveal`, `run`, and `dwim`.
   Implementation notes: each command is top-level function. They are after `activate`, because the
   code is read top-down.
-- [ ] Add `Terminal` class to `model.ts` which will hold _logical_ state of the terminal, but which
+- [X] Add `Terminal` class to `model.ts` which will hold _logical_ state of the terminal, but which
   won't directly display it. Terminal will have `status` and `output` methods to return status line
   and the output text respectively. They will return a `{ text: string }` object to allow for
   extensibility (we'll return highlights in the future). Use `= =` for status and `"hello world"`
-  for output for now. 
+  for output for now.
