@@ -230,10 +230,6 @@ export class Terminal {
       clearInterval(this.currentProcess.runtimeUpdateInterval);
       this.currentProcess.process.kill("SIGKILL");
     }
-    if (this.currentProcess?.runtimeUpdateInterval) {
-      clearInterval(this.currentProcess.runtimeUpdateInterval);
-      this.currentProcess.runtimeUpdateInterval = undefined;
-    }
 
     // Parse command
     const parsed = parseCommand(commandString);
