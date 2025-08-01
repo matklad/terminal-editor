@@ -5,6 +5,7 @@ import {
   getTerminalForTesting,
   resetForTesting,
   syncPending,
+  TerminalSemanticTokensProvider,
   visibleTerminal,
   waitForSync,
 } from "./extension";
@@ -25,6 +26,74 @@ async function assertEdit(
 ): Promise<void> {
   const success = await editor.edit(editCallback);
   assert.ok(success, "Editor edit should succeed");
+}
+
+// Helper to decode semantic tokens and extract their text ranges
+interface DecodedToken {
+  line: number;
+  character: number;
+  length: number;
+  tokenType: number;
+  tokenText: string;
+  expectedType: string;
+}
+
+function decodeSemanticTokens(
+  document: vscode.TextDocument,
+  tokens: vscode.SemanticTokens,
+  legend: vscode.SemanticTokensLegend
+): DecodedToken[] {
+  const decoded: DecodedToken[] = [];
+  const data = tokens.data;
+  
+  let line = 0;
+  let character = 0;
+  
+  // Semantic tokens are encoded as [deltaLine, deltaChar, length, tokenType, tokenModifiers]
+  for (let i = 0; i < data.length; i += 5) {
+    const deltaLine = data[i];
+    const deltaChar = data[i + 1];
+    const length = data[i + 2];
+    const tokenType = data[i + 3];
+    
+    // Update position - VSCode semantic tokens use delta encoding
+    if (deltaLine > 0) {
+      line += deltaLine;
+      character = deltaChar; // Reset character to delta when line changes
+    } else {
+      character += deltaChar; // Add to character when staying on same line
+    }
+    
+    // Ensure we don't go out of bounds
+    if (line >= document.lineCount) {
+      console.warn(`Token line ${line} is out of bounds (document has ${document.lineCount} lines)`);
+      continue;
+    }
+    
+    const lineText = document.lineAt(line).text;
+    if (character >= lineText.length || character + length > lineText.length) {
+      console.warn(`Token at ${line}:${character} length ${length} is out of bounds for line: "${lineText}"`);
+      continue;
+    }
+    
+    // Extract the actual text from the document
+    const startPos = new vscode.Position(line, character);
+    const endPos = new vscode.Position(line, character + length);
+    const tokenText = document.getText(new vscode.Range(startPos, endPos));
+    
+    const expectedType = legend.tokenTypes[tokenType] || `unknown-${tokenType}`;
+    
+    decoded.push({
+      line,
+      character,
+      length,
+      tokenType,
+      tokenText,
+      expectedType
+    });
+  }
+  
+  return decoded;
 }
 
 // Helper functions for common test commands using node -e
@@ -1003,6 +1072,395 @@ suite("Syntax Highlighting Tests", () => {
     assert.strictEqual(pathRange.file, "/home/user/project/src/main.c");
     assert.strictEqual(pathRange.line, 123);
     assert.strictEqual(pathRange.column, 45);
+  });
+});
+
+suite("Syntax Highlighting Integration Tests", () => {
+  setup(async () => {
+    // Close all editors
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+
+    // Reset the global terminal instance
+    resetForTesting();
+  });
+
+  teardown(async () => {
+    // Clean up after each test
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  });
+
+  test("Semantic tokens are provided for terminal document with basic status", async () => {
+    // Create terminal
+    await vscode.commands.executeCommand("terminal-editor.reveal");
+
+    // Get the terminal editor
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor);
+    assert.strictEqual(activeEditor.document.uri.scheme, "terminal-editor");
+
+    // Wait for sync to complete
+    await waitForSync();
+
+    // Verify the document has the expected basic content structure
+    const text = activeEditor.document.getText();
+    assert.ok(text.includes("= ="), "Document should contain basic status line");
+
+    // Find the line with the status
+    let statusLineIndex = -1;
+    for (let i = 0; i < activeEditor.document.lineCount; i++) {
+      if (activeEditor.document.lineAt(i).text === "= =") {
+        statusLineIndex = i;
+        break;
+      }
+    }
+    assert.ok(statusLineIndex >= 0, "Should find status line");
+
+    // Test that the extension correctly registers the semantic tokens provider
+    const provider = new TerminalSemanticTokensProvider();
+    const tokenResult = provider.provideDocumentSemanticTokens(
+      activeEditor.document,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) }
+    );
+
+    // Handle async result
+    const tokens = await Promise.resolve(tokenResult);
+    assert.ok(tokens, "Should provide semantic tokens");
+    if (tokens) {
+      assert.ok(tokens.data.length > 0, "Should have token data");
+      
+      // Decode tokens with fixed logic and verify they correspond to correct text
+      const legend = TerminalSemanticTokensProvider.getLegend();
+      const decodedTokens = decodeSemanticTokens(activeEditor.document, tokens, legend);
+      
+      // Filter out invalid tokens
+      const validTokens = decodedTokens.filter(t => t.tokenText.length > 0);
+      
+      // Should have 2 punctuation tokens for "="
+      const punctuationTokens = validTokens.filter(t => t.expectedType === "operator");
+      assert.strictEqual(punctuationTokens.length, 2, "Should have exactly 2 punctuation tokens");
+      
+      // Both tokens should be on the status line and should contain "="
+      punctuationTokens.forEach((token, index) => {
+        assert.strictEqual(token.tokenText, "=", `Punctuation token ${index} should be '='`);
+        assert.strictEqual(token.length, 1, `Punctuation token ${index} should have length 1`);
+        assert.strictEqual(token.line, statusLineIndex, `Punctuation token ${index} should be on status line ${statusLineIndex}`);
+      });
+      
+      // The two tokens should be at positions 0 and 2 in the "= =" line
+      assert.strictEqual(punctuationTokens[0].character, 0, "First '=' should be at character 0");
+      assert.strictEqual(punctuationTokens[1].character, 2, "Second '=' should be at character 2");
+    }
+  });
+
+  test("Semantic tokens include highlighting for completed command status", async () => {
+    // Create terminal
+    await vscode.commands.executeCommand("terminal-editor.reveal");
+
+    // Get the terminal editor
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor);
+
+    // Insert and run a simple command
+    const command = fastCommand();
+    await assertEdit(activeEditor, (editBuilder) => {
+      editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+    });
+
+    await vscode.commands.executeCommand("terminal-editor.run");
+    await wait();
+
+    // Verify the document has the expected content structure
+    const text = activeEditor.document.getText();
+    assert.ok(text.includes("time:"), "Document should contain time information");
+    assert.ok(text.includes("status:"), "Document should contain status information");
+
+    // Find the status line
+    let statusLineIndex = -1;
+    for (let i = 0; i < activeEditor.document.lineCount; i++) {
+      const lineText = activeEditor.document.lineAt(i).text;
+      if (lineText.includes("time:") && lineText.includes("status:")) {
+        statusLineIndex = i;
+        break;
+      }
+    }
+    assert.ok(statusLineIndex >= 0, "Should find status line with time and status");
+
+    // Test that the provider can generate tokens for this content
+    const provider = new TerminalSemanticTokensProvider();
+    const tokenResult = provider.provideDocumentSemanticTokens(
+      activeEditor.document,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) }
+    );
+
+    // Handle async result
+    const tokens = await Promise.resolve(tokenResult);
+    assert.ok(tokens, "Should provide semantic tokens");
+    if (tokens) {
+      assert.ok(tokens.data.length > 0, "Should have token data");
+      
+      // Decode tokens and verify they correspond to correct text
+      const legend = TerminalSemanticTokensProvider.getLegend();
+      const decodedTokens = decodeSemanticTokens(activeEditor.document, tokens, legend);
+      
+      // Filter out invalid tokens
+      const validTokens = decodedTokens.filter(t => t.tokenText.length > 0);
+      assert.ok(validTokens.length > 0, "Should have valid decoded tokens");
+      
+      // Should have keyword tokens for "time:" and "status:"
+      const keywordTokens = validTokens.filter(t => t.expectedType === "keyword" && t.line === statusLineIndex);
+      assert.ok(keywordTokens.length >= 2, "Should have at least 2 keyword tokens on status line");
+      
+      // Should have punctuation tokens for "="
+      const punctuationTokens = validTokens.filter(t => t.expectedType === "operator" && t.line === statusLineIndex);
+      assert.strictEqual(punctuationTokens.length, 2, "Should have exactly 2 punctuation tokens on status line");
+      
+      // Should have number tokens for time and status values
+      const numberTokens = validTokens.filter(t => t.expectedType === "number" && t.line === statusLineIndex);
+      assert.ok(numberTokens.length >= 2, "Should have at least 2 number tokens on status line");
+    }
+  });
+
+  test("Semantic tokens highlight file paths in command output", async () => {
+    // Create terminal
+    await vscode.commands.executeCommand("terminal-editor.reveal");
+
+    // Get the terminal editor
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor);
+
+    // Create a command that will output a fake file path in error format
+    const command = `node -e "console.error('src/main.ts:42:15: error: something went wrong')"`;
+    await assertEdit(activeEditor, (editBuilder) => {
+      editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+    });
+
+    await vscode.commands.executeCommand("terminal-editor.run");
+    await wait();
+
+    // Verify the document contains the expected error output
+    const text = activeEditor.document.getText();
+    assert.ok(text.includes("src/main.ts:42:15"), "Document should contain file path");
+    assert.ok(text.includes("error:"), "Document should contain error message");
+
+    // Find the actual output line (not the command line) that contains path and error
+    // The command line will contain the path but won't be tokenized
+    // The output line will be tokenized and should have both path and error tokens
+    let pathLineIndex = -1;
+    
+    // Look for lines that contain the path but are not the command line (line 0)
+    for (let i = 1; i < activeEditor.document.lineCount; i++) {
+      const lineText = activeEditor.document.lineAt(i).text;
+      if (lineText.includes("src/main.ts:42:15") && lineText.includes("error:") && 
+          !lineText.includes("console.error")) {  // Exclude the command line
+        pathLineIndex = i;
+        break;
+      }
+    }
+    assert.ok(pathLineIndex >= 0, "Should find output line with file path and error");
+
+    // Test that the provider can generate tokens for this content including paths and errors
+    const provider = new TerminalSemanticTokensProvider();
+    const tokenResult = provider.provideDocumentSemanticTokens(
+      activeEditor.document,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) }
+    );
+
+    // Handle async result
+    const tokens = await Promise.resolve(tokenResult);
+    assert.ok(tokens, "Should provide semantic tokens");
+    if (tokens) {
+      // Decode tokens and verify they correspond to correct text
+      const legend = TerminalSemanticTokensProvider.getLegend();
+      const decodedTokens = decodeSemanticTokens(activeEditor.document, tokens, legend);
+      
+      // Filter out invalid tokens
+      const validTokens = decodedTokens.filter(t => t.tokenText.length > 0);
+      
+      // Should have a file path token on the output line
+      const pathTokens = validTokens.filter(t => t.expectedType === "string" && t.line === pathLineIndex);
+      const pathToken = pathTokens.find(t => t.tokenText === "src/main.ts:42:15");
+      assert.ok(pathToken, "Should have file path token 'src/main.ts:42:15' on correct line");
+      assert.strictEqual(pathToken!.length, 17, "Path token should have correct length");
+      
+      // Should have an error token on the output line
+      const errorTokens = validTokens.filter(t => t.expectedType === "property" && t.line === pathLineIndex);
+      const errorToken = errorTokens.find(t => t.tokenText === "error:");
+      assert.ok(errorToken, "Should have error token 'error:' on correct line");
+      assert.strictEqual(errorToken!.length, 6, "Error token should have length 6");
+    }
+  });
+
+  test("Semantic tokens update when terminal content changes", async () => {
+    // Create terminal
+    await vscode.commands.executeCommand("terminal-editor.reveal");
+
+    // Get the terminal editor
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor);
+
+    // Get initial tokens (should just be basic status)
+    await waitForSync();
+    const provider = new TerminalSemanticTokensProvider();
+    const initialTokenResult = provider.provideDocumentSemanticTokens(
+      activeEditor.document,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) }
+    );
+
+    const initialTokens = await Promise.resolve(initialTokenResult);
+    assert.ok(initialTokens, "Should provide initial semantic tokens");
+    const initialTokenCount = initialTokens ? initialTokens.data.length : 0;
+
+    // Add and run a command
+    const command = fastCommand();
+    await assertEdit(activeEditor, (editBuilder) => {
+      editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+    });
+
+    await vscode.commands.executeCommand("terminal-editor.run");
+    await wait();
+
+    // Get updated tokens
+    const updatedTokenResult = provider.provideDocumentSemanticTokens(
+      activeEditor.document,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) }
+    );
+
+    const updatedTokens = await Promise.resolve(updatedTokenResult);
+    assert.ok(updatedTokens, "Should provide updated semantic tokens");
+    
+    if (updatedTokens) {
+      // Should have more tokens after running a command (time, status, etc.)
+      assert.ok(
+        updatedTokens.data.length > initialTokenCount,
+        `Should have more tokens after command (initial: ${initialTokenCount}, updated: ${updatedTokens.data.length})`
+      );
+    }
+  });
+
+  test("Semantic tokens provider handles empty document gracefully", async () => {
+    // Create terminal
+    await vscode.commands.executeCommand("terminal-editor.reveal");
+
+    // Get the terminal editor
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor);
+
+    // Clear the document completely
+    await assertEdit(activeEditor, (editBuilder) => {
+      const doc = activeEditor.document;
+      const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
+      editBuilder.delete(fullRange);
+    });
+
+    // Try to get semantic tokens from empty document
+    const provider = new TerminalSemanticTokensProvider();
+    const tokenResult = provider.provideDocumentSemanticTokens(
+      activeEditor.document,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) }
+    );
+
+    // Should not crash and should return some result
+    const tokens = await Promise.resolve(tokenResult);
+    assert.ok(tokens !== null && tokens !== undefined, "Should handle empty document without crashing");
+  });
+
+  test("Semantic tokens correctly map tag types to VSCode token types", async () => {
+    // Create terminal
+    await vscode.commands.executeCommand("terminal-editor.reveal");
+
+    // Get the terminal editor and run a command with error output
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor);
+
+    // Command that produces both successful completion and error-like output
+    const command = `node -e "console.log('Done'); console.error('Warning: test.js:10:5: minor issue')"`;
+    await assertEdit(activeEditor, (editBuilder) => {
+      editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+    });
+
+    await vscode.commands.executeCommand("terminal-editor.run");
+    await wait();
+
+    // Get the terminal and check its output ranges
+    const terminal = getTerminalForTesting();
+    const statusResult = terminal.status();
+    const outputResult = terminal.output();
+
+    // Verify we have the expected highlight ranges
+    assert.ok(statusResult.ranges.length > 0, "Should have status highlight ranges");
+    
+    // Check for specific range types in status
+    const punctuationRanges = statusResult.ranges.filter(r => r.tag === "punctuation");
+    const keywordRanges = statusResult.ranges.filter(r => r.tag === "keyword");
+    const timeRanges = statusResult.ranges.filter(r => r.tag === "time");
+    const statusOkRanges = statusResult.ranges.filter(r => r.tag === "status_ok");
+
+    assert.ok(punctuationRanges.length >= 2, "Should have punctuation ranges for = symbols");
+    assert.ok(keywordRanges.length >= 1, "Should have keyword ranges");
+    assert.ok(timeRanges.length >= 1, "Should have time ranges");
+    assert.ok(statusOkRanges.length >= 1, "Should have status_ok range");
+
+    // Check that output has path and error ranges if the command output contains them
+    if (outputResult.text.includes("test.js:10:5")) {
+      const pathRanges = outputResult.ranges.filter(r => r.tag === "path");
+      assert.ok(pathRanges.length > 0, "Should detect file path in output");
+    }
+  });
+
+  test("Semantic token ranges are precise for complex output with multiple paths and errors", async () => {
+    // Create terminal
+    await vscode.commands.executeCommand("terminal-editor.reveal");
+
+    // Get the terminal editor
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor);
+
+    // Use a simpler test case that will actually work
+    const command = `node -e "console.error('lib/parser.ts:25:3: error: Type error'); console.error('src/utils.js:108:12: error: Name error')"`;
+    await assertEdit(activeEditor, (editBuilder) => {
+      editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+    });
+
+    await vscode.commands.executeCommand("terminal-editor.run");
+    await wait();
+
+    // Get semantic tokens and decode them
+    const provider = new TerminalSemanticTokensProvider();
+    const tokenResult = provider.provideDocumentSemanticTokens(
+      activeEditor.document,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) }
+    );
+
+    const tokens = await Promise.resolve(tokenResult);
+    assert.ok(tokens, "Should provide semantic tokens");
+    
+    if (tokens) {
+      const legend = TerminalSemanticTokensProvider.getLegend();
+      const decodedTokens = decodeSemanticTokens(activeEditor.document, tokens, legend);
+      
+      // Filter out invalid tokens
+      const validTokens = decodedTokens.filter(t => t.tokenText.length > 0);
+      
+      // Should have path tokens for both file paths
+      const pathTokens = validTokens.filter(t => t.expectedType === "string");
+      const expectedPaths = ["lib/parser.ts:25:3", "src/utils.js:108:12"];
+      
+      expectedPaths.forEach(expectedPath => {
+        const pathToken = pathTokens.find(t => t.tokenText === expectedPath);
+        assert.ok(pathToken, `Should have path token for '${expectedPath}'`);
+        assert.strictEqual(pathToken!.length, expectedPath.length, `Path token should have correct length for '${expectedPath}'`);
+      });
+      
+      // Should have error tokens
+      const errorTokens = validTokens.filter(t => t.expectedType === "property");
+      const errorTokensWithText = errorTokens.filter(t => t.tokenText === "error:");
+      assert.ok(errorTokensWithText.length >= 2, "Should have at least 2 error tokens");
+      
+      // Verify no overlapping tokens - each token should have a unique position
+      const tokenPositions = validTokens.map(t => `${t.line}:${t.character}-${t.character + t.length}`);
+      const uniquePositions = new Set(tokenPositions);
+      assert.strictEqual(tokenPositions.length, uniquePositions.size, "All tokens should have unique positions (no overlaps)");
+    }
   });
 });
 

@@ -129,7 +129,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {}
 
-class TerminalSemanticTokensProvider
+export class TerminalSemanticTokensProvider
   implements vscode.DocumentSemanticTokensProvider {
   private static readonly legend = new vscode.SemanticTokensLegend([
     "keyword",
@@ -156,8 +156,8 @@ class TerminalSemanticTokensProvider
       TerminalSemanticTokensProvider.legend,
     );
 
-    // Add tokens for status line - status starts at splitLine + 1 (after blank line)
-    const statusStartOffset = this.getLineStartOffset(document, splitLine + 1);
+    // Add tokens for status line - status starts at splitLine (the line with "=")
+    const statusStartOffset = this.getLineStartOffset(document, splitLine);
     this.addTokensFromRanges(
       builder,
       document,
@@ -165,8 +165,8 @@ class TerminalSemanticTokensProvider
       statusStartOffset,
     );
 
-    // Add tokens for output - output starts at splitLine + 3 (status + blank + output)
-    const outputStartOffset = this.getLineStartOffset(document, splitLine + 3);
+    // Add tokens for output - output starts at splitLine + 2 (status + blank + output)
+    const outputStartOffset = this.getLineStartOffset(document, splitLine + 2);
     this.addTokensFromRanges(
       builder,
       document,
