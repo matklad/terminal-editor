@@ -41,6 +41,7 @@ export interface ParsedCommand {
 interface ProcessInfo {
   process: ChildProcess;
   startTime: Date;
+  endTime?: Date;
   exitCode?: number;
   stdout: string;
   stderr: string;
@@ -135,9 +136,10 @@ export class Terminal {
       return "0s";
     }
 
-    const now = new Date();
+    // Use endTime if process has finished, otherwise use current time
+    const endTime = this.currentProcess.endTime || new Date();
 
-    const durationMs = now.getTime() - this.currentProcess.startTime.getTime();
+    const durationMs = endTime.getTime() - this.currentProcess.startTime.getTime();
     const durationSeconds = Math.floor(durationMs / 1000);
 
     if (durationSeconds < 60) {
@@ -271,6 +273,7 @@ export class Terminal {
     // Handle process close (normal exit)
     process.on("close", (code: number) => {
       processInfo.exitCode = code;
+      processInfo.endTime = new Date();
       this.events.onStateChange?.();
       completionResolve(code);
     });
@@ -279,6 +282,7 @@ export class Terminal {
     process.on("error", (error: Error) => {
       processInfo.stderr += error.message + "\n";
       processInfo.exitCode = 127; // Standard exit code for command not found
+      processInfo.endTime = new Date();
       this.events.onOutput?.();
       this.events.onStateChange?.();
       completionResolve(127);
