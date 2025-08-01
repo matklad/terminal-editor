@@ -18,6 +18,15 @@ async function wait(): Promise<void> {
   await waitForSync();
 }
 
+// Test helper that performs an edit and asserts it succeeded
+async function assertEdit(
+  editor: vscode.TextEditor,
+  editCallback: (editBuilder: vscode.TextEditorEdit) => void,
+): Promise<void> {
+  const success = await editor.edit(editCallback);
+  assert.ok(success, "Editor edit should succeed");
+}
+
 // Helper functions for common test commands using node -e
 function manyLinesCommand(lineCount: number): string {
   return `node -e "for(let i = 1; i <= ${lineCount}; i++) console.log('Line ' + i)"`;
@@ -350,7 +359,7 @@ suite("Run Command Tests", () => {
 
     // Insert a simple command
     const command = fastCommand();
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
       editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
     });
 
@@ -374,7 +383,7 @@ suite("Run Command Tests", () => {
 
     // Insert a command that exits with error
     const command = errorCommand();
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
       editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
     });
 
@@ -407,7 +416,7 @@ suite("Run Command Tests", () => {
 
     // Insert a command that sleeps for a short time
     const command = sleepCommand(3);
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
       editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
     });
 
@@ -467,26 +476,34 @@ suite("Run Command Tests", () => {
 
     // Insert a long-running command
     const longCommand = sleepCommand(10);
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
       editBuilder.replace(new vscode.Range(0, 0, 0, 0), longCommand);
     });
 
     // Run the first command
     await vscode.commands.executeCommand("terminal-editor.run");
 
-    // Replace with a quick command
+    // Wait a brief moment for the first command to start, then replace with a quick command
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const quickCommand = fastCommand();
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
+      // Clear all content first
       const doc = activeEditor.document;
-      const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
-      editBuilder.replace(fullRange, quickCommand);
+      const fullText = doc.getText();
+      const fullRange = new vscode.Range(
+        doc.positionAt(0),
+        doc.positionAt(fullText.length)
+      );
+      editBuilder.delete(fullRange);
+      editBuilder.insert(new vscode.Position(0, 0), quickCommand);
     });
 
     // Run the second command
     await vscode.commands.executeCommand("terminal-editor.run");
 
     // Wait for completion
-    await wait()
+    await wait();
 
     // Check that we got output from the second command using snapshot
     const text = activeEditor.document.getText();
@@ -503,7 +520,7 @@ suite("Run Command Tests", () => {
 
     // Insert a command that doesn't exist
     const nonExistentCommand = "this-command-definitely-does-not-exist-12345";
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
       editBuilder.replace(new vscode.Range(0, 0, 0, 0), nonExistentCommand);
     });
 
@@ -590,7 +607,7 @@ suite("DWIM Command Tests", () => {
 
     // Insert a simple command
     const command = fastCommand();
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
       editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
     });
 
@@ -615,7 +632,7 @@ suite("DWIM Command Tests", () => {
 
     // Insert pwd command to check working directory
     const command = 'node -e "console.log(process.cwd())"';
-    await activeEditor.edit((editBuilder) => {
+    await assertEdit(activeEditor, (editBuilder) => {
       editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
     });
 
@@ -1029,7 +1046,7 @@ suite("Fold/Unfold Mode Tests", () => {
 
       // Insert a command that produces many lines
       const command = manyLinesCommand(10);
-      await activeEditor.edit((editBuilder) => {
+      await assertEdit(activeEditor, (editBuilder) => {
         editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
       });
 
