@@ -737,4 +737,111 @@ suite("Fold/Unfold Mode Tests", () => {
       vscode.workspace.getConfiguration = originalGetConfiguration;
     }
   });
+
+  test("Tab key toggles fold when cursor on status line with ellipsis", async () => {
+    // Override the maxOutputLines setting to 3 for this test
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
+    vscode.workspace.getConfiguration = () => ({
+      get: (key: string, defaultValue?: any) => {
+        if (key === "maxOutputLines") {
+          return 3;
+        }
+        return defaultValue;
+      },
+    }) as any;
+
+    try {
+      // Create terminal
+      await vscode.commands.executeCommand("terminal-editor.reveal");
+
+      // Get the terminal editor
+      const activeEditor = vscode.window.activeTextEditor;
+      assert.ok(activeEditor);
+      assert.strictEqual(activeEditor.document.uri.scheme, "terminal-editor");
+
+      // Insert a command that produces many lines
+      const command = manyLinesCommand(10);
+      await activeEditor.edit((editBuilder) => {
+        editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+      });
+
+      // Run the command
+      await vscode.commands.executeCommand("terminal-editor.run");
+
+      // Wait for completion
+      const terminal = getTerminalForTesting();
+      await terminal.waitForCompletion();
+      await waitForSync();
+
+      // Find the status line (should contain "..." since output is truncated)
+      const text = activeEditor.document.getText();
+      const lines = text.split('\n');
+      let statusLineIndex = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('=') && lines[i].includes('time:')) {
+          statusLineIndex = i;
+          break;
+        }
+      }
+      assert.ok(statusLineIndex >= 0, "Status line not found");
+      assert.ok(lines[statusLineIndex].includes('...'), "Status line should contain ellipsis for truncated output");
+
+      // Position cursor on the status line
+      const position = new vscode.Position(statusLineIndex, 5); // Somewhere in the middle of status line
+      activeEditor.selection = new vscode.Selection(position, position);
+
+      // Verify we're in folded mode initially
+      assert.ok(terminal.isFolded(), "Terminal should be in folded mode initially");
+
+      // Test our toggleFold command when cursor is on status line with ellipsis
+      // (This simulates the Tab key behavior)
+      await vscode.commands.executeCommand("terminal-editor.toggleFold");
+      await waitForSync();
+      
+      // Verify the terminal is now unfolded
+      assert.ok(!terminal.isFolded(), "Terminal should be unfolded after Tab on status line with ellipsis");
+
+      // Test that positioning cursor on status line when it has ellipsis works
+      // (We already tested this above and it worked)
+      
+      // Now test positioning cursor on status line when it does NOT have ellipsis (unfolded)
+      // Position cursor back on the status line (but now it shouldn't have ellipsis)
+      const updatedText = activeEditor.document.getText();
+      const updatedLines = updatedText.split('\n');
+      let updatedStatusLineIndex = -1;
+      for (let i = 0; i < updatedLines.length; i++) {
+        if (updatedLines[i].startsWith('=') && updatedLines[i].includes('time:')) {
+          updatedStatusLineIndex = i;
+          break;
+        }
+      }
+      
+      const statusPosition = new vscode.Position(updatedStatusLineIndex, 5);
+      activeEditor.selection = new vscode.Selection(statusPosition, statusPosition);
+      
+      // Call toggleFold - this should NOT toggle because there's no ellipsis in unfolded mode
+      const wasUnfolded = !terminal.isFolded();
+      await vscode.commands.executeCommand("terminal-editor.toggleFold");
+      await waitForSync();
+      
+      // Should execute default tab behavior since no ellipsis, so state shouldn't change
+      assert.strictEqual(terminal.isFolded(), !wasUnfolded, "Terminal fold state should not change when status line has no ellipsis");
+      
+      // Position cursor on non-status line and test
+      const nonStatusPosition = new vscode.Position(0, 0); // First line (command line)
+      activeEditor.selection = new vscode.Selection(nonStatusPosition, nonStatusPosition);
+      
+      // Call toggleFold - this should NOT toggle because cursor is not on status line
+      const currentFoldState = terminal.isFolded();
+      await vscode.commands.executeCommand("terminal-editor.toggleFold");
+      await waitForSync();
+      
+      // Should execute default tab behavior, so fold state shouldn't change
+      assert.strictEqual(terminal.isFolded(), currentFoldState, "Terminal fold state should not change when cursor is not on status line");
+
+    } finally {
+      // Restore original getConfiguration
+      vscode.workspace.getConfiguration = originalGetConfiguration;
+    }
+  });
 });

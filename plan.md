@@ -163,5 +163,11 @@ This will regenerate all snapshot files with the current test output.
   Implementation notes: Added isOutputTruncated() private method to check if combined stdout/stderr
   exceeds maxOutputLines when folded. Modified status() method to add "..." before closing "=" when
   output is truncated in folded mode. Updated snapshots to reflect new status format.
-- [ ] If the cursor is on the status line, and the status line has `...` (the output is large), the
+- [X] If the cursor is on the status line, and the status line has `...` (the output is large), the
   tab key should run `toggleFold` command.
+  Implementation notes: Added keybinding for Tab key in package.json that maps to terminal-editor.toggleFold
+  command when in terminal-editor files. Modified toggleFold() function to check cursor position and
+  status line content using shouldToggleFoldOnTab() helper. Only toggles fold when cursor is on status
+  line AND status contains "..." (indicating truncated output). Otherwise executes default tab behavior.
+  Added comprehensive test covering all scenarios: cursor on status line with/without ellipsis, and
+  cursor on non-status line.

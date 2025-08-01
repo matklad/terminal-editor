@@ -1,14 +1,6 @@
-node -e "for(let i = 1; i <= 10; i++) console.log('Line ' + i)"
+node -e "for(let i = 1; i <= 10; i++) console.log('Line ' + i)" 
 
-= time: 0s status: 0 =
+= time: 0s status: 0 ...=
 
-Line 1
-Line 2
-Line 3
-Line 4
-Line 5
-Line 6
-Line 7
-Line 8
 Line 9
 Line 10

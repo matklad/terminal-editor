@@ -36,6 +36,17 @@
       {
         "command": "terminal-editor.dwim",
         "title": "Terminal Editor: Do What I Mean"
+      },
+      {
+        "command": "terminal-editor.toggleFold",
+        "title": "Terminal Editor: Toggle Fold"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "terminal-editor.toggleFold",
+        "key": "tab",
+        "when": "editorTextFocus && resourceScheme == terminal-editor"
       }
     ],
     "configuration": {

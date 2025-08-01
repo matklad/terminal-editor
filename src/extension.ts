@@ -310,6 +310,28 @@ async function toggleFold() {
     return;
   }
 
+  // Check if cursor is on the status line and status contains "..."
+  if (!shouldToggleFoldOnTab(editor)) {
+    // If conditions aren't met, execute default tab behavior
+    await vscode.commands.executeCommand("tab");
+    return;
+  }
+
   terminal.toggleFold();
   await sync(editor);
+}
+
+function shouldToggleFoldOnTab(editor: vscode.TextEditor): boolean {
+  const position = editor.selection.active;
+  const document = editor.document;
+  const line = document.lineAt(position.line);
+  const statusText = terminal.status().text;
+  
+  // Check if current line is the status line (starts with "=" and contains status)
+  const isStatusLine = line.text.startsWith("=") && line.text.includes("time:");
+  
+  // Check if status contains "..." (indicating truncated output)
+  const hasEllipsis = statusText.includes("...");
+  
+  return isStatusLine && hasEllipsis;
 }
