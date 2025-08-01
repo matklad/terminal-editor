@@ -55,7 +55,11 @@ export class Terminal {
       ? ` status: ${this.currentProcess.exitCode}`
       : "";
 
-    return { text: `= time: ${runtime}${status} =` };
+    // Check if output is truncated (folded and exceeds maxOutputLines)
+    const truncated = this.folded && this.isOutputTruncated();
+    const ellipsis = truncated ? "..." : "";
+
+    return { text: `= time: ${runtime}${status} ${ellipsis}=` };
   }
 
   private formatRuntime(): string {
@@ -207,6 +211,19 @@ export class Terminal {
 
   isFolded(): boolean {
     return this.folded;
+  }
+
+  private isOutputTruncated(): boolean {
+    if (!this.currentProcess) {
+      return false;
+    }
+
+    const combinedOutput = this.currentProcess.stdout +
+      this.currentProcess.stderr;
+    const lines = combinedOutput.split("\n");
+    const maxLines = this.settings.maxOutputLines();
+    
+    return lines.length > maxLines;
   }
 }
 
