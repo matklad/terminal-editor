@@ -137,9 +137,12 @@ This will regenerate all snapshot files with the current test output.
   that returns the first workspace folder's fsPath or falls back to process.cwd(). Updated both
   Terminal instantiations in extension.ts to use workspace root. Added unit test verifying Terminal
   respects working directory and integration test confirming workspace root is used correctly.
-- [ ] Make tests check `SLOW_TESTS` variable. From this point on, if a test takes longer than 500ms,
+- [X] Make tests check `SLOW_TESTS` variable. From this point on, if a test takes longer than 500ms,
   it should be running only if `SLOW_TESTS` is set. Run tests to see which ones are slow. Apply this
   rule to them.
+  Implementation notes: Added SLOW_TESTS environment variable check to the "Run command shows
+  runtime updates" test (which takes ~3s). Test is skipped unless SLOW_TESTS=1 is set. Without
+  SLOW_TESTS, test suite runs in ~700ms; with SLOW_TESTS, it takes ~4s but runs all tests.
 - [ ] Move setInterval logic from extension.ts to terminal.ts. The terminal should be responsible for
   firing an event every second, _while_ the command runs. Add corresponding callback to TerminalEvents.
 - [ ] Add full and folded mode to the terminal. In the full mode, all the output is displayed. In

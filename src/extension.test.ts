@@ -361,6 +361,12 @@ suite('Run Command Tests', () => {
 	});
 
 	test('Run command shows runtime updates', async function() {
+		// Skip slow test unless SLOW_TESTS environment variable is set
+		if (!process.env.SLOW_TESTS) {
+			this.skip();
+			return;
+		}
+		
 		// Increase timeout for this test
 		this.timeout(8000);
 
