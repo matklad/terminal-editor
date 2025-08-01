@@ -111,14 +111,42 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {}
 
 class EphemeralFileSystem implements vscode.FileSystemProvider {
-  readonly onDidChangeFile =
-    new vscode.EventEmitter<vscode.FileChangeEvent[]>().event;
+  // In-memory storage for the current session
+  private files = new Map<string, Uint8Array>();
+  private readonly _emitter = new vscode.EventEmitter<
+    vscode.FileChangeEvent[]
+  >();
+  readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> =
+    this._emitter.event;
 
-  watch(): vscode.Disposable {
+  static getScheme(): string {
+    return "terminal-editor";
+  }
+
+  static createUri(path: string): vscode.Uri {
+    return vscode.Uri.parse(`"terminal-editor":${path}`);
+  }
+
+  watch(
+    uri: vscode.Uri,
+    options: { recursive: boolean; excludes: string[] },
+  ): vscode.Disposable {
+    // We don't need to implement watching for ephemeral files
     return new vscode.Disposable(() => {});
   }
 
-  stat(): vscode.FileStat {
+  stat(uri: vscode.Uri): vscode.FileStat | Thenable<vscode.FileStat> {
+    const data = this.files.get(uri.path);
+    if (data) {
+      return {
+        type: vscode.FileType.File,
+        ctime: Date.now(),
+        mtime: Date.now(),
+        size: data.length,
+      };
+    }
+
+    // Return a fake stat for any path to make VS Code think the file exists
     return {
       type: vscode.FileType.File,
       ctime: Date.now(),
@@ -127,21 +155,70 @@ class EphemeralFileSystem implements vscode.FileSystemProvider {
     };
   }
 
-  readDirectory(): [string, vscode.FileType][] {
+  readDirectory(
+    uri: vscode.Uri,
+  ): [string, vscode.FileType][] | Thenable<[string, vscode.FileType][]> {
+    // Not needed for our use case
     return [];
   }
 
-  createDirectory(): void {}
-
-  readFile(): Uint8Array {
-    return new Uint8Array();
+  createDirectory(uri: vscode.Uri): void | Thenable<void> {
+    // Not needed for our use case
   }
 
-  writeFile(): void {}
+  readFile(uri: vscode.Uri): Uint8Array | Thenable<Uint8Array> {
+    const data = this.files.get(uri.path);
+    if (data) {
+      return data;
+    }
 
-  delete(): void {}
+    // Return empty content for any file that doesn't exist
+    return new Uint8Array(0);
+  }
 
-  rename(): void {}
+  writeFile(
+    uri: vscode.Uri,
+    content: Uint8Array,
+    options: { create: boolean; overwrite: boolean },
+  ): void | Thenable<void> {
+    // "Save" the file in memory but don't persist it anywhere
+    this.files.set(uri.path, content);
+
+    // Emit a change event to let VS Code know the file was "saved"
+    this._emitter.fire([{
+      type: vscode.FileChangeType.Changed,
+      uri: uri,
+    }]);
+  }
+
+  delete(
+    uri: vscode.Uri,
+    options: { recursive: boolean },
+  ): void | Thenable<void> {
+    this.files.delete(uri.path);
+
+    this._emitter.fire([{
+      type: vscode.FileChangeType.Deleted,
+      uri: uri,
+    }]);
+  }
+
+  rename(
+    oldUri: vscode.Uri,
+    newUri: vscode.Uri,
+    options: { overwrite: boolean },
+  ): void | Thenable<void> {
+    const data = this.files.get(oldUri.path);
+    if (data) {
+      this.files.set(newUri.path, data);
+      this.files.delete(oldUri.path);
+    }
+
+    this._emitter.fire([
+      { type: vscode.FileChangeType.Deleted, uri: oldUri },
+      { type: vscode.FileChangeType.Created, uri: newUri },
+    ]);
+  }
 }
 
 export function visibleTerminal(): vscode.TextEditor | undefined {

@@ -139,7 +139,8 @@ export class Terminal {
     // Use endTime if process has finished, otherwise use current time
     const endTime = this.currentProcess.endTime || new Date();
 
-    const durationMs = endTime.getTime() - this.currentProcess.startTime.getTime();
+    const durationMs = endTime.getTime() -
+      this.currentProcess.startTime.getTime();
     const durationSeconds = Math.floor(durationMs / 1000);
 
     if (durationSeconds < 60) {
