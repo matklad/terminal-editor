@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
-import { Terminal, TerminalEvents, TerminalSettings, HighlightRange } from "./model";
+import {
+  HighlightRange,
+  Terminal,
+  TerminalEvents,
+  TerminalSettings,
+} from "./model";
 
 let terminal: Terminal;
 let syncRunning = false;
@@ -88,7 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.languages.registerDocumentSemanticTokensProvider(
       { scheme: "terminal-editor" },
       semanticTokensProvider,
-      TerminalSemanticTokensProvider.getLegend()
+      TerminalSemanticTokensProvider.getLegend(),
     ),
   );
 
@@ -124,14 +129,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {}
 
-class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
+class TerminalSemanticTokensProvider
+  implements vscode.DocumentSemanticTokensProvider {
   private static readonly legend = new vscode.SemanticTokensLegend([
     "keyword",
     "operator",
     "string",
     "number",
     "property",
-    "variable"
+    "variable",
   ]);
 
   static getLegend(): vscode.SemanticTokensLegend {
@@ -140,26 +146,41 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 
   provideDocumentSemanticTokens(
     document: vscode.TextDocument,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.SemanticTokens> {
     const { splitLine } = findInput({ document } as vscode.TextEditor);
     const statusResult = terminal.status();
     const outputResult = terminal.output();
-    
-    const builder = new vscode.SemanticTokensBuilder(TerminalSemanticTokensProvider.legend);
-    
+
+    const builder = new vscode.SemanticTokensBuilder(
+      TerminalSemanticTokensProvider.legend,
+    );
+
     // Add tokens for status line - status starts at splitLine + 1 (after blank line)
     const statusStartOffset = this.getLineStartOffset(document, splitLine + 1);
-    this.addTokensFromRanges(builder, document, statusResult.ranges, statusStartOffset);
-    
+    this.addTokensFromRanges(
+      builder,
+      document,
+      statusResult.ranges,
+      statusStartOffset,
+    );
+
     // Add tokens for output - output starts at splitLine + 3 (status + blank + output)
     const outputStartOffset = this.getLineStartOffset(document, splitLine + 3);
-    this.addTokensFromRanges(builder, document, outputResult.ranges, outputStartOffset);
-    
+    this.addTokensFromRanges(
+      builder,
+      document,
+      outputResult.ranges,
+      outputStartOffset,
+    );
+
     return builder.build();
   }
 
-  private getLineStartOffset(document: vscode.TextDocument, lineNumber: number): number {
+  private getLineStartOffset(
+    document: vscode.TextDocument,
+    lineNumber: number,
+  ): number {
     if (lineNumber >= document.lineCount) {
       return document.getText().length;
     }
@@ -170,17 +191,17 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
     builder: vscode.SemanticTokensBuilder,
     document: vscode.TextDocument,
     ranges: HighlightRange[],
-    textStartOffset: number
+    textStartOffset: number,
   ) {
     for (const range of ranges) {
       // Convert relative range offsets to absolute document offsets
       const absoluteStart = textStartOffset + range.start;
       const absoluteEnd = textStartOffset + range.end;
-      
+
       // Convert to positions
       const startPos = document.positionAt(absoluteStart);
       const length = range.end - range.start;
-      
+
       const tokenType = this.mapTagToTokenType(range.tag);
       if (tokenType !== undefined) {
         builder.push(startPos.line, startPos.character, length, tokenType);
@@ -190,14 +211,22 @@ class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensPro
 
   private mapTagToTokenType(tag: string): number | undefined {
     switch (tag) {
-      case "keyword": return 0; // keyword
-      case "punctuation": return 1; // operator
-      case "time": return 3; // number
-      case "status_ok": return 3; // number
-      case "status_err": return 3; // number
-      case "path": return 2; // string
-      case "error": return 4; // property
-      default: return undefined;
+      case "keyword":
+        return 0; // keyword
+      case "punctuation":
+        return 1; // operator
+      case "time":
+        return 3; // number
+      case "status_ok":
+        return 3; // number
+      case "status_err":
+        return 3; // number
+      case "path":
+        return 2; // string
+      case "error":
+        return 4; // property
+      default:
+        return undefined;
     }
   }
 }
