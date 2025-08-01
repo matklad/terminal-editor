@@ -133,7 +133,19 @@ This will regenerate all snapshot files with the current test output.
 - [X] add working directory to the Terminal. When creating terminal in extension.ts, initialize
   working direcory with the current workspace root directory.
   Implementation notes: Added workingDirectory property to Terminal class constructor and passed it
-  to spawn() options as { cwd: this.workingDirectory }. Created getWorkspaceRoot() helper function 
-  that returns the first workspace folder's fsPath or falls back to process.cwd(). Updated both 
-  Terminal instantiations in extension.ts to use workspace root. Added unit test verifying Terminal 
+  to spawn() options as { cwd: this.workingDirectory }. Created getWorkspaceRoot() helper function
+  that returns the first workspace folder's fsPath or falls back to process.cwd(). Updated both
+  Terminal instantiations in extension.ts to use workspace root. Added unit test verifying Terminal
   respects working directory and integration test confirming workspace root is used correctly.
+- [ ] Make tests check `SLOW_TESTS` variable. From this point on, if a test takes longer than 500ms,
+  it should be running only if `SLOW_TESTS` is set. Run tests to see which ones are slow. Apply this
+  rule to them.
+- [ ] Move setInterval logic from extension.ts to terminal.ts. The terminal should be responsible for
+  firing an event every second, _while_ the command runs. Add corresponding callback to TerminalEvents.
+- [ ] Add full and folded mode to the terminal. In the full mode, all the output is displayed. In
+  the folded mode, the number of lines is limited by maxOutputLines. Add `terminal-editor.toggleFold`
+  command.
+- [ ] Change the `status` command to add `...` before the closing `=` if the total size of the output
+  is larger than maxOutputLines.
+- [ ] If the cursor is on the status line, and the status line has `...` (the output is large), the
+  tab key should run `toggleFold` command.
