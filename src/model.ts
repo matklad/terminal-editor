@@ -8,6 +8,7 @@ export interface TerminalSettings {
 export interface TerminalEvents {
     onOutput?: () => void;
     onStateChange?: () => void;
+    onRuntimeUpdate?: () => void;
 }
 
 export interface ParsedCommand {
@@ -24,6 +25,7 @@ interface ProcessInfo {
     stderr: string;
     commandLine: string;
     completion: Promise<number>;
+    runtimeUpdateInterval?: NodeJS.Timeout;
 }
 
 export class Terminal {
@@ -89,9 +91,14 @@ export class Terminal {
     }
 
     run(commandString: string): void {
-        // Kill existing process if running
+        // Kill existing process if running and stop runtime updates
         if (this.currentProcess && this.currentProcess.exitCode === undefined) {
+            clearInterval(this.currentProcess.runtimeUpdateInterval);
             this.currentProcess.process.kill("SIGKILL");
+        }
+        if (this.currentProcess?.runtimeUpdateInterval) {
+            clearInterval(this.currentProcess.runtimeUpdateInterval);
+            this.currentProcess.runtimeUpdateInterval = undefined;
         }
 
         // Parse command
@@ -116,9 +123,16 @@ export class Terminal {
             stdout: '',
             stderr: '',
             commandLine: commandString,
-            completion
+            completion,
+            runtimeUpdateInterval: setInterval(() => {
+                if (processInfo.exitCode !== undefined) {
+                    clearInterval(processInfo.runtimeUpdateInterval);
+                    processInfo.runtimeUpdateInterval = undefined;
+                    return;
+                }
+                this.events.onRuntimeUpdate?.();
+            }, 1000),
         };
-
         this.currentProcess = processInfo;
 
         // Handle process close (normal exit)
@@ -172,6 +186,7 @@ export class Terminal {
 
         await this.currentProcess.completion;
     }
+
 }
 
 export function parseCommand(command: string, cursorPosition?: number): ParsedCommand {

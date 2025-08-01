@@ -143,7 +143,7 @@ This will regenerate all snapshot files with the current test output.
   Implementation notes: Added SLOW_TESTS environment variable check to the "Run command shows
   runtime updates" test (which takes ~3s). Test is skipped unless SLOW_TESTS=1 is set. Without
   SLOW_TESTS, test suite runs in ~700ms; with SLOW_TESTS, it takes ~4s but runs all tests.
-- [ ] Move setInterval logic from extension.ts to terminal.ts. The terminal should be responsible for
+- [X] Move setInterval logic from extension.ts to terminal.ts. The terminal should be responsible for
   firing an event every second, _while_ the command runs. Add corresponding callback to TerminalEvents.
 - [ ] Add full and folded mode to the terminal. In the full mode, all the output is displayed. In
   the folded mode, the number of lines is limited by maxOutputLines. Add `terminal-editor.toggleFold`

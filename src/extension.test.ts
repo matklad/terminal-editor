@@ -329,6 +329,9 @@ suite('Run Command Tests', () => {
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
 
+		// Wait for final sync to complete
+		await waitForSync();
+
 		// Check that the output contains the expected result using snapshot
 		const text = activeEditor.document.getText();
 		snapshot.expectSnapshot('run-command-simple-output', text);
@@ -354,6 +357,9 @@ suite('Run Command Tests', () => {
 		// Wait for the process to complete
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
+
+		// Wait for final sync to complete
+		await waitForSync();
 
 		// Check that the output shows error exit code using snapshot
 		const text = activeEditor.document.getText();
@@ -396,6 +402,10 @@ suite('Run Command Tests', () => {
 		// Wait for completion
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
+
+		// Wait for final sync to complete
+		await waitForSync();
+
 		text = activeEditor.document.getText();
 		snapshot.expectSnapshot('run-command-runtime-updates-final', text);
 	});
@@ -455,6 +465,9 @@ suite('Run Command Tests', () => {
 		// Wait for completion
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
+
+		// Wait for final sync to complete
+		await waitForSync();
 
 		// Check that we got output from the second command using snapshot
 		const text = activeEditor.document.getText();
@@ -563,6 +576,9 @@ suite('DWIM Command Tests', () => {
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
 
+		// Wait for final sync to complete
+		await waitForSync();
+
 		// Check that the command was executed using snapshot
 		const text = activeEditor.document.getText();
 		snapshot.expectSnapshot('dwim-runs-command-when-focused', text);
@@ -589,6 +605,9 @@ suite('DWIM Command Tests', () => {
 		// Wait for completion
 		const terminal = getTerminalForTesting();
 		await terminal.waitForCompletion();
+
+		// Wait for final sync to complete
+		await waitForSync();
 
 		// Check that the output shows the current working directory
 		const text = activeEditor.document.getText();

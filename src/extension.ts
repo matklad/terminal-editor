@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { Terminal, TerminalSettings, TerminalEvents } from './model';
 
 let terminal: Terminal;
-let runtimeUpdateInterval: NodeJS.Timeout | undefined;
 let syncRunning = false;
 export let syncPending = false;
 let syncCompletionResolvers: (() => void)[] = [];
@@ -25,10 +24,6 @@ function getWorkspaceRoot(): string {
 
 // Test helper function to reset state
 export function resetForTesting() {
-	if (runtimeUpdateInterval) {
-		clearInterval(runtimeUpdateInterval);
-		runtimeUpdateInterval = undefined;
-	}
 	syncRunning = false;
 	syncPending = false;
 	syncCompletionResolvers = [];
@@ -52,19 +47,14 @@ export async function waitForSync(): Promise<void> {
 }
 
 function createTerminalEvents(): TerminalEvents {
+	function syncIfVisible() {
+			const editor = visibleTerminal();
+		if (editor) sync(editor);
+	}
 	return {
-		onOutput: () => {
-			const editor = visibleTerminal();
-			if (editor) {
-				sync(editor);
-			}
-		},
-		onStateChange: () => {
-			const editor = visibleTerminal();
-			if (editor) {
-				sync(editor);
-			}
-		}
+		onOutput: syncIfVisible,
+		onStateChange: syncIfVisible,
+		onRuntimeUpdate: syncIfVisible
 	};
 }
 
@@ -86,12 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(revealCommand, runCommand, dwimCommand);
 }
 
-export function deactivate() {
-	if (runtimeUpdateInterval) {
-		clearInterval(runtimeUpdateInterval);
-		runtimeUpdateInterval = undefined;
-	}
-}
+export function deactivate() {}
 
 class EphemeralFileSystem implements vscode.FileSystemProvider {
 	readonly onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>().event;
@@ -255,33 +240,11 @@ async function run() {
 		return;
 	}
 
-	// Clear runtime update interval if running
-	if (runtimeUpdateInterval) {
-		clearInterval(runtimeUpdateInterval);
-		runtimeUpdateInterval = undefined;
-	}
-
 	// Start the process
 	terminal.run(command);
 
 	// Immediately sync to clear old result
 	await sync(editor);
-
-	// Set up runtime update interval while command is running
-	runtimeUpdateInterval = setInterval(async () => {
-		if (!terminal.isRunning()) {
-			if (runtimeUpdateInterval) {
-				clearInterval(runtimeUpdateInterval);
-				runtimeUpdateInterval = undefined;
-			}
-			return;
-		}
-
-		const currentEditor = visibleTerminal();
-		if (currentEditor) {
-			await sync(currentEditor);
-		}
-	}, 1000);
 }
 
 async function dwim() {
