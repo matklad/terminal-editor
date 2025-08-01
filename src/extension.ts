@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { Terminal, TerminalEvents, TerminalSettings } from "./model";
+import { Terminal, TerminalEvents, TerminalSettings, HighlightRange } from "./model";
 
 let terminal: Terminal;
 let syncRunning = false;
@@ -83,6 +83,15 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
+  const semanticTokensProvider = new TerminalSemanticTokensProvider();
+  context.subscriptions.push(
+    vscode.languages.registerDocumentSemanticTokensProvider(
+      { scheme: "terminal-editor" },
+      semanticTokensProvider,
+      TerminalSemanticTokensProvider.getLegend()
+    ),
+  );
+
   const revealCommand = vscode.commands.registerCommand(
     "terminal-editor.reveal",
     reveal,
@@ -99,16 +108,99 @@ export function activate(context: vscode.ExtensionContext) {
     "terminal-editor.toggleFold",
     toggleFold,
   );
+  const tabCommand = vscode.commands.registerCommand(
+    "terminal-editor.tab",
+    handleTab,
+  );
 
   context.subscriptions.push(
     revealCommand,
     runCommand,
     dwimCommand,
     toggleFoldCommand,
+    tabCommand,
   );
 }
 
 export function deactivate() {}
+
+class TerminalSemanticTokensProvider implements vscode.DocumentSemanticTokensProvider {
+  private static readonly legend = new vscode.SemanticTokensLegend([
+    "keyword",
+    "operator",
+    "string",
+    "number",
+    "property",
+    "variable"
+  ]);
+
+  static getLegend(): vscode.SemanticTokensLegend {
+    return TerminalSemanticTokensProvider.legend;
+  }
+
+  provideDocumentSemanticTokens(
+    document: vscode.TextDocument,
+    token: vscode.CancellationToken
+  ): vscode.ProviderResult<vscode.SemanticTokens> {
+    const { splitLine } = findInput({ document } as vscode.TextEditor);
+    const statusResult = terminal.status();
+    const outputResult = terminal.output();
+    
+    const builder = new vscode.SemanticTokensBuilder(TerminalSemanticTokensProvider.legend);
+    
+    // Add tokens for status line - status starts at splitLine + 1 (after blank line)
+    const statusStartOffset = this.getLineStartOffset(document, splitLine + 1);
+    this.addTokensFromRanges(builder, document, statusResult.ranges, statusStartOffset);
+    
+    // Add tokens for output - output starts at splitLine + 3 (status + blank + output)
+    const outputStartOffset = this.getLineStartOffset(document, splitLine + 3);
+    this.addTokensFromRanges(builder, document, outputResult.ranges, outputStartOffset);
+    
+    return builder.build();
+  }
+
+  private getLineStartOffset(document: vscode.TextDocument, lineNumber: number): number {
+    if (lineNumber >= document.lineCount) {
+      return document.getText().length;
+    }
+    return document.offsetAt(new vscode.Position(lineNumber, 0));
+  }
+
+  private addTokensFromRanges(
+    builder: vscode.SemanticTokensBuilder,
+    document: vscode.TextDocument,
+    ranges: HighlightRange[],
+    textStartOffset: number
+  ) {
+    for (const range of ranges) {
+      // Convert relative range offsets to absolute document offsets
+      const absoluteStart = textStartOffset + range.start;
+      const absoluteEnd = textStartOffset + range.end;
+      
+      // Convert to positions
+      const startPos = document.positionAt(absoluteStart);
+      const length = range.end - range.start;
+      
+      const tokenType = this.mapTagToTokenType(range.tag);
+      if (tokenType !== undefined) {
+        builder.push(startPos.line, startPos.character, length, tokenType);
+      }
+    }
+  }
+
+  private mapTagToTokenType(tag: string): number | undefined {
+    switch (tag) {
+      case "keyword": return 0; // keyword
+      case "punctuation": return 1; // operator
+      case "time": return 3; // number
+      case "status_ok": return 3; // number
+      case "status_err": return 3; // number
+      case "path": return 2; // string
+      case "error": return 4; // property
+      default: return undefined;
+    }
+  }
+}
 
 class EphemeralFileSystem implements vscode.FileSystemProvider {
   // In-memory storage for the current session
@@ -386,27 +478,35 @@ async function toggleFold() {
     return;
   }
 
-  // Check if cursor is on the status line and status contains "..."
-  if (!shouldToggleFoldOnTab(editor)) {
-    // If conditions aren't met, execute default tab behavior
+  terminal.toggleFold();
+}
+
+async function handleTab() {
+  const editor = visibleTerminal();
+  if (!editor) {
     await vscode.commands.executeCommand("tab");
     return;
   }
 
-  terminal.toggleFold();
+  // Check if cursor is on the status line and status contains "..."
+  if (shouldToggleFoldOnTab(editor)) {
+    terminal.toggleFold();
+  } else {
+    // Execute default tab behavior
+    await vscode.commands.executeCommand("tab");
+  }
 }
 
 function shouldToggleFoldOnTab(editor: vscode.TextEditor): boolean {
   const position = editor.selection.active;
   const document = editor.document;
   const line = document.lineAt(position.line);
-  const statusResult = terminal.status();
 
   // Check if current line is the status line (starts with "=" and contains status)
   const isStatusLine = line.text.startsWith("=") && line.text.includes("time:");
 
-  // Check if status contains "..." (indicating truncated output)
-  const hasEllipsis = statusResult.text.includes("...");
+  // Check if the actual status line in the document contains "..." (indicating truncated output)
+  const hasEllipsis = line.text.includes("...");
 
   return isStatusLine && hasEllipsis;
 }

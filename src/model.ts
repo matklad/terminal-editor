@@ -84,7 +84,7 @@ export class Terminal {
       : "";
 
     // Always display `...` for long output.
-    const ellipsis = this.isOutputTruncated() ? "..." : "";
+    const ellipsis = this.outputLarge() ? "..." : "";
 
     const text = `= time: ${runtime}${status} ${ellipsis}=`;
     const ranges: HighlightRange[] = [];
@@ -335,7 +335,7 @@ export class Terminal {
     return this.folded;
   }
 
-  private isOutputTruncated(): boolean {
+  private outputLarge(): boolean {
     if (!this.currentProcess) {
       return false;
     }

@@ -40,11 +40,15 @@
       {
         "command": "terminal-editor.toggleFold",
         "title": "Terminal Editor: Toggle Fold"
+      },
+      {
+        "command": "terminal-editor.tab",
+        "title": "Terminal Editor: Tab"
       }
     ],
     "keybindings": [
       {
-        "command": "terminal-editor.toggleFold",
+        "command": "terminal-editor.tab",
         "key": "tab",
         "when": "editorTextFocus && resourceScheme == terminal-editor"
       }
