@@ -53,7 +53,9 @@ export async function waitForSync(): Promise<void> {
 function createTerminalEvents(): TerminalEvents {
   function syncIfVisible() {
     const editor = visibleTerminal();
-    if (editor) sync(editor);
+    if (editor) {
+      sync(editor);
+    }
   }
   return {
     onOutput: syncIfVisible,
@@ -93,8 +95,12 @@ export function activate(context: vscode.ExtensionContext) {
     "terminal-editor.dwim",
     dwim,
   );
+  const toggleFoldCommand = vscode.commands.registerCommand(
+    "terminal-editor.toggleFold",
+    toggleFold,
+  );
 
-  context.subscriptions.push(revealCommand, runCommand, dwimCommand);
+  context.subscriptions.push(revealCommand, runCommand, dwimCommand, toggleFoldCommand);
 }
 
 export function deactivate() {}
@@ -295,4 +301,15 @@ async function dwim() {
     // Terminal is not revealed, reveal it
     await reveal();
   }
+}
+
+async function toggleFold() {
+  const editor = visibleTerminal();
+  if (!editor) {
+    vscode.window.showErrorMessage("Terminal Editor: No terminal editor found");
+    return;
+  }
+
+  terminal.toggleFold();
+  await sync(editor);
 }

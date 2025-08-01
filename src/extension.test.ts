@@ -661,3 +661,80 @@ suite("DWIM Command Tests", () => {
     );
   });
 });
+
+suite("Fold/Unfold Mode Tests", () => {
+  const snapshot = createSnapshotTester();
+
+  setup(async () => {
+    // Close all editors
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+
+    // Reset the global terminal instance
+    resetForTesting();
+  });
+
+  teardown(async () => {
+    // Clean up after each test
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  });
+
+  test("toggleFold command works in extension", async () => {
+    // Override the maxOutputLines setting to 3 for this test
+    const originalGetConfiguration = vscode.workspace.getConfiguration;
+    vscode.workspace.getConfiguration = () => ({
+      get: (key: string, defaultValue?: any) => {
+        if (key === "maxOutputLines") {
+          return 3;
+        }
+        return defaultValue;
+      },
+    }) as any;
+
+    try {
+      // Create terminal
+      await vscode.commands.executeCommand("terminal-editor.reveal");
+
+      // Get the terminal editor
+      const activeEditor = vscode.window.activeTextEditor;
+      assert.ok(activeEditor);
+      assert.strictEqual(activeEditor.document.uri.scheme, "terminal-editor");
+
+      // Insert a command that produces many lines
+      const command = manyLinesCommand(10);
+      await activeEditor.edit((editBuilder) => {
+        editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+      });
+
+      // Run the command
+      await vscode.commands.executeCommand("terminal-editor.run");
+
+      // Wait for completion
+      const terminal = getTerminalForTesting();
+      await terminal.waitForCompletion();
+      await waitForSync();
+
+      // Get the initial (folded) text
+      let text = activeEditor.document.getText();
+      snapshot.expectSnapshot("toggle-fold-initial-folded", text);
+
+      // Execute toggleFold command
+      await vscode.commands.executeCommand("terminal-editor.toggleFold");
+      await waitForSync();
+
+      // Get the unfolded text
+      text = activeEditor.document.getText();
+      snapshot.expectSnapshot("toggle-fold-after-unfold", text);
+
+      // Execute toggleFold command again
+      await vscode.commands.executeCommand("terminal-editor.toggleFold");
+      await waitForSync();
+
+      // Get the re-folded text
+      text = activeEditor.document.getText();
+      snapshot.expectSnapshot("toggle-fold-after-refold", text);
+    } finally {
+      // Restore original getConfiguration
+      vscode.workspace.getConfiguration = originalGetConfiguration;
+    }
+  });
+});

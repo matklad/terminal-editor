@@ -33,6 +33,7 @@ export class Terminal {
   private settings: TerminalSettings;
   private events: TerminalEvents;
   private workingDirectory: string;
+  private folded: boolean = true;
 
   constructor(
     settings: TerminalSettings,
@@ -84,8 +85,14 @@ export class Terminal {
 
     const combinedOutput = this.currentProcess.stdout +
       this.currentProcess.stderr;
-    const lines = combinedOutput.split("\n");
 
+    // In full mode, return all output
+    if (!this.folded) {
+      return { text: combinedOutput };
+    }
+
+    // In folded mode, limit to maxOutputLines
+    const lines = combinedOutput.split("\n");
     const maxLines = this.settings.maxOutputLines();
     if (lines.length <= maxLines) {
       return { text: combinedOutput };
@@ -191,6 +198,15 @@ export class Terminal {
     }
 
     await this.currentProcess.completion;
+  }
+
+  toggleFold(): void {
+    this.folded = !this.folded;
+    this.events.onStateChange?.();
+  }
+
+  isFolded(): boolean {
+    return this.folded;
   }
 }
 
