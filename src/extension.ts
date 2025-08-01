@@ -209,29 +209,23 @@ async function doSync(editor: vscode.TextEditor) {
 
   // If document is empty, start with blank line as user input
   if (command === "") {
-    const edit = new vscode.WorkspaceEdit();
-    const uri = document.uri;
     const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
     const newContent = "\n\n" + terminal.status().text + "\n\n" +
       terminal.output().text;
-    edit.replace(uri, fullRange, newContent);
-    await vscode.workspace.applyEdit(edit);
+    await editor.edit((edit) => edit.replace(fullRange, newContent));
     return;
   }
 
   // Replace everything after user input
   const statusResult = terminal.status();
   const outputResult = terminal.output();
-  const newContent = statusResult.text + "\n\n" + outputResult.text;
+  const newContent = "\n" + statusResult.text + "\n\n" + outputResult.text;
 
-  const edit = new vscode.WorkspaceEdit();
-  const uri = document.uri;
   const range = new vscode.Range(
     new vscode.Position(splitLine - 1, 0),
     document.positionAt(document.getText().length),
   );
-  edit.replace(uri, range, "\n" + newContent);
-  await vscode.workspace.applyEdit(edit);
+  await editor.edit((edit) => edit.replace(range, newContent));
 }
 
 async function reveal() {
@@ -323,7 +317,6 @@ async function toggleFold() {
   }
 
   terminal.toggleFold();
-  await sync(editor);
 }
 
 function shouldToggleFoldOnTab(editor: vscode.TextEditor): boolean {

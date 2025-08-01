@@ -82,9 +82,8 @@ export class Terminal {
       ? ` status: ${this.currentProcess.exitCode}`
       : "";
 
-    // Check if output is truncated (folded and exceeds maxOutputLines)
-    const truncated = this.folded && this.isOutputTruncated();
-    const ellipsis = truncated ? "..." : "";
+    // Always display `...` for long output.
+    const ellipsis = this.isOutputTruncated() ? "..." : "";
 
     const text = `= time: ${runtime}${status} ${ellipsis}=`;
     const ranges: HighlightRange[] = [];
@@ -238,6 +237,8 @@ export class Terminal {
     if (parsed.tokens.length === 0) {
       return;
     }
+
+    this.folded = true;
 
     // Start new process
     const [program, ...args] = parsed.tokens;
