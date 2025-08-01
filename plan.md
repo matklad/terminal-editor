@@ -159,10 +159,7 @@ This will regenerate all snapshot files with the current test output.
   the folded mode, the number of lines is limited by maxOutputLines. Add `terminal-editor.toggleFold`
   command.
 - [X] Change the `status` command to add `...` before the closing `=` if the total size of the output
-  is larger than maxOutputLines.
-  Implementation notes: Added isOutputTruncated() private method to check if combined stdout/stderr
-  exceeds maxOutputLines when folded. Modified status() method to add "..." before closing "=" when
-  output is truncated in folded mode. Updated snapshots to reflect new status format.
+  is larger than maxOutputLines. NOTE THAT `...` is shown for long output even if it is folded!
 - [X] If the cursor is on the status line, and the status line has `...` (the output is large), the
   tab key should run `toggleFold` command.
   Implementation notes: Added keybinding for Tab key in package.json that maps to terminal-editor.toggleFold
