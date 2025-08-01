@@ -662,6 +662,362 @@ suite("DWIM Command Tests", () => {
   });
 });
 
+suite("Syntax Highlighting Tests", () => {
+  test("Terminal.status() returns proper highlighting ranges for basic status", () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings);
+
+    const result = terminal.status();
+
+    // Should be "= ="
+    assert.strictEqual(result.text, "= =");
+    assert.strictEqual(result.ranges.length, 2);
+
+    // Both '=' characters should be punctuation
+    assert.deepStrictEqual(result.ranges[0], {
+      start: 0,
+      end: 1,
+      tag: "punctuation",
+    });
+    assert.deepStrictEqual(result.ranges[1], {
+      start: 2,
+      end: 3,
+      tag: "punctuation",
+    });
+  });
+
+  test("Terminal.status() returns proper highlighting ranges with runtime and status", async () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings);
+
+    // Run a simple command to get runtime and status
+    terminal.run(fastCommand());
+    await terminal.waitForCompletion();
+
+    const result = terminal.status();
+
+    // Should contain time and status information with proper ranges
+    assert.ok(result.text.includes("time:"));
+    assert.ok(result.text.includes("status:"));
+
+    // Find expected ranges
+    let foundKeywordRanges = 0;
+    let foundTimeRange = false;
+    let foundStatusRange = false;
+    let foundPunctuationRanges = 0;
+
+    for (const range of result.ranges) {
+      const rangeText = result.text.substring(range.start, range.end);
+
+      if (range.tag === "keyword") {
+        foundKeywordRanges++;
+        assert.ok(
+          rangeText === "time:" || rangeText === "status:",
+          `Unexpected keyword range: ${rangeText}`,
+        );
+      } else if (range.tag === "time") {
+        foundTimeRange = true;
+        assert.ok(
+          rangeText.match(/^\d+s$/),
+          `Time range should match duration format: ${rangeText}`,
+        );
+      } else if (range.tag === "status_ok" || range.tag === "status_err") {
+        foundStatusRange = true;
+        assert.ok(
+          rangeText === "0" || rangeText === "1",
+          `Status range should be exit code: ${rangeText}`,
+        );
+      } else if (range.tag === "punctuation") {
+        foundPunctuationRanges++;
+        assert.strictEqual(
+          rangeText,
+          "=",
+          `Punctuation range should be '=': ${rangeText}`,
+        );
+      }
+    }
+
+    assert.strictEqual(
+      foundKeywordRanges,
+      2,
+      "Should have 2 keyword ranges (time: and status:)",
+    );
+    assert.ok(foundTimeRange, "Should have a time range");
+    assert.ok(foundStatusRange, "Should have a status range");
+    assert.strictEqual(
+      foundPunctuationRanges,
+      2,
+      "Should have 2 punctuation ranges (opening and closing =)",
+    );
+  });
+
+  test("Terminal.status() uses status_ok for zero exit code", async () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings);
+
+    // Run a command that succeeds
+    terminal.run(fastCommand());
+    await terminal.waitForCompletion();
+
+    const result = terminal.status();
+
+    const statusRanges = result.ranges.filter((r) =>
+      r.tag === "status_ok" || r.tag === "status_err"
+    );
+    assert.strictEqual(
+      statusRanges.length,
+      1,
+      "Should have exactly one status range",
+    );
+    assert.strictEqual(
+      statusRanges[0].tag,
+      "status_ok",
+      "Should use status_ok for zero exit code",
+    );
+  });
+
+  test("Terminal.status() uses status_err for non-zero exit code", async () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings);
+
+    // Run a command that fails
+    terminal.run(errorCommand());
+    await terminal.waitForCompletion();
+
+    const result = terminal.status();
+
+    const statusRanges = result.ranges.filter((r) =>
+      r.tag === "status_ok" || r.tag === "status_err"
+    );
+    assert.strictEqual(
+      statusRanges.length,
+      1,
+      "Should have exactly one status range",
+    );
+    assert.strictEqual(
+      statusRanges[0].tag,
+      "status_err",
+      "Should use status_err for non-zero exit code",
+    );
+  });
+
+  test("Terminal.output() returns empty ranges for simple output", async () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings);
+
+    // Test with no output
+    let result = terminal.output();
+    assert.strictEqual(result.text, "");
+    assert.strictEqual(result.ranges.length, 0);
+
+    // Test with simple output that has no file paths or errors
+    terminal.run(fastCommand());
+    await terminal.waitForCompletion();
+
+    result = terminal.output();
+    assert.ok(result.text.length > 0, "Should have some output text");
+    assert.strictEqual(
+      result.ranges.length,
+      0,
+      "Should have no ranges for simple output",
+    );
+  });
+
+  test("Terminal.output() detects file paths with line and column", () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings, {});
+
+    // Create fake process with file path in stdout
+    const mockProcess = {
+      process: {} as any,
+      startTime: new Date(),
+      exitCode: 1,
+      stdout: "src/test.zig:69:28: some message\n",
+      stderr: "",
+      commandLine: "test",
+      completion: Promise.resolve(1),
+    };
+    (terminal as any).currentProcess = mockProcess;
+
+    const result = terminal.output();
+
+    assert.strictEqual(result.ranges.length, 1, "Should detect one file path");
+
+    const pathRange = result.ranges[0];
+    assert.strictEqual(pathRange.tag, "path");
+    assert.strictEqual(pathRange.file, "src/test.zig");
+    assert.strictEqual(pathRange.line, 69);
+    assert.strictEqual(pathRange.column, 28);
+
+    // Verify the range covers the full path:line:column
+    const rangeText = result.text.substring(pathRange.start, pathRange.end);
+    assert.strictEqual(rangeText, "src/test.zig:69:28");
+  });
+
+  test("Terminal.output() detects multiple file paths", () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings, {});
+
+    // Create fake process with multiple file paths
+    const mockProcess = {
+      process: {} as any,
+      startTime: new Date(),
+      exitCode: 1,
+      stdout:
+        "src/main.rs:10:5: first error\nlib/utils.ts:42:12: second error\n",
+      stderr: "",
+      commandLine: "test",
+      completion: Promise.resolve(1),
+    };
+    (terminal as any).currentProcess = mockProcess;
+
+    const result = terminal.output();
+
+    assert.strictEqual(result.ranges.length, 2, "Should detect two file paths");
+
+    const firstPath = result.ranges[0];
+    assert.strictEqual(firstPath.tag, "path");
+    assert.strictEqual(firstPath.file, "src/main.rs");
+    assert.strictEqual(firstPath.line, 10);
+    assert.strictEqual(firstPath.column, 5);
+
+    const secondPath = result.ranges[1];
+    assert.strictEqual(secondPath.tag, "path");
+    assert.strictEqual(secondPath.file, "lib/utils.ts");
+    assert.strictEqual(secondPath.line, 42);
+    assert.strictEqual(secondPath.column, 12);
+  });
+
+  test("Terminal.output() detects error messages", () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings, {});
+
+    // Create fake process with error messages
+    const mockProcess = {
+      process: {} as any,
+      startTime: new Date(),
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "src/main.rs:10:5: error: unused variable\nWarning: something\nError: another issue\nERROR: caps error\n",
+      commandLine: "test",
+      completion: Promise.resolve(1),
+    };
+    (terminal as any).currentProcess = mockProcess;
+
+    const result = terminal.output();
+
+    // Should detect error messages but not "Warning"
+    const errorRanges = result.ranges.filter((r) => r.tag === "error");
+    assert.strictEqual(
+      errorRanges.length,
+      3,
+      "Should detect three error messages",
+    );
+
+    // Verify the detected error text (includes colon)
+    const errorTexts = errorRanges.map((range) =>
+      result.text.substring(range.start, range.end)
+    );
+    assert.ok(errorTexts.includes("error:"), "Should detect 'error:'");
+    assert.ok(errorTexts.includes("Error:"), "Should detect 'Error:'");
+    assert.ok(errorTexts.includes("ERROR:"), "Should detect 'ERROR:'");
+  });
+
+  test("Terminal.output() detects both file paths and error messages", () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings, {});
+
+    // Create fake process with both file paths and error messages
+    const mockProcess = {
+      process: {} as any,
+      startTime: new Date(),
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "src/tigerbeetle/main.zig:440:27: error: root source file struct 'stdx' has no member named 'unique_u18'\n",
+      commandLine: "test",
+      completion: Promise.resolve(1),
+    };
+    (terminal as any).currentProcess = mockProcess;
+
+    const result = terminal.output();
+
+    // Should detect both path and error
+    assert.strictEqual(
+      result.ranges.length,
+      2,
+      "Should detect both file path and error",
+    );
+
+    const pathRanges = result.ranges.filter((r) => r.tag === "path");
+    const errorRanges = result.ranges.filter((r) => r.tag === "error");
+
+    assert.strictEqual(pathRanges.length, 1, "Should detect one file path");
+    assert.strictEqual(errorRanges.length, 1, "Should detect one error");
+
+    const pathRange = pathRanges[0];
+    assert.strictEqual(pathRange.file, "src/tigerbeetle/main.zig");
+    assert.strictEqual(pathRange.line, 440);
+    assert.strictEqual(pathRange.column, 27);
+
+    const errorRange = errorRanges[0];
+    const errorText = result.text.substring(errorRange.start, errorRange.end);
+    assert.strictEqual(errorText, "error:");
+  });
+
+  test("Terminal.output() handles absolute file paths", () => {
+    const mockSettings: TerminalSettings = {
+      maxOutputLines: () => 50,
+    };
+    const terminal = new Terminal(mockSettings, {});
+
+    // Create fake process with absolute file path
+    const mockProcess = {
+      process: {} as any,
+      startTime: new Date(),
+      exitCode: 1,
+      stdout: "/home/user/project/src/main.c:123:45: error message\n",
+      stderr: "",
+      commandLine: "test",
+      completion: Promise.resolve(1),
+    };
+    (terminal as any).currentProcess = mockProcess;
+
+    const result = terminal.output();
+
+    const pathRanges = result.ranges.filter((r) => r.tag === "path");
+    assert.strictEqual(
+      pathRanges.length,
+      1,
+      "Should detect absolute file path",
+    );
+
+    const pathRange = pathRanges[0];
+    assert.strictEqual(pathRange.file, "/home/user/project/src/main.c");
+    assert.strictEqual(pathRange.line, 123);
+    assert.strictEqual(pathRange.column, 45);
+  });
+});
+
 suite("Fold/Unfold Mode Tests", () => {
   const snapshot = createSnapshotTester();
 
@@ -681,14 +1037,15 @@ suite("Fold/Unfold Mode Tests", () => {
   test("toggleFold command works in extension", async () => {
     // Override the maxOutputLines setting to 3 for this test
     const originalGetConfiguration = vscode.workspace.getConfiguration;
-    vscode.workspace.getConfiguration = () => ({
-      get: (key: string, defaultValue?: any) => {
-        if (key === "maxOutputLines") {
-          return 3;
-        }
-        return defaultValue;
-      },
-    }) as any;
+    vscode.workspace.getConfiguration = () =>
+      ({
+        get: (key: string, defaultValue?: any) => {
+          if (key === "maxOutputLines") {
+            return 3;
+          }
+          return defaultValue;
+        },
+      }) as any;
 
     try {
       // Create terminal
@@ -741,14 +1098,15 @@ suite("Fold/Unfold Mode Tests", () => {
   test("Tab key toggles fold when cursor on status line with ellipsis", async () => {
     // Override the maxOutputLines setting to 3 for this test
     const originalGetConfiguration = vscode.workspace.getConfiguration;
-    vscode.workspace.getConfiguration = () => ({
-      get: (key: string, defaultValue?: any) => {
-        if (key === "maxOutputLines") {
-          return 3;
-        }
-        return defaultValue;
-      },
-    }) as any;
+    vscode.workspace.getConfiguration = () =>
+      ({
+        get: (key: string, defaultValue?: any) => {
+          if (key === "maxOutputLines") {
+            return 3;
+          }
+          return defaultValue;
+        },
+      }) as any;
 
     try {
       // Create terminal
@@ -775,70 +1133,94 @@ suite("Fold/Unfold Mode Tests", () => {
 
       // Find the status line (should contain "..." since output is truncated)
       const text = activeEditor.document.getText();
-      const lines = text.split('\n');
+      const lines = text.split("\n");
       let statusLineIndex = -1;
       for (let i = 0; i < lines.length; i++) {
-        if (lines[i].startsWith('=') && lines[i].includes('time:')) {
+        if (lines[i].startsWith("=") && lines[i].includes("time:")) {
           statusLineIndex = i;
           break;
         }
       }
       assert.ok(statusLineIndex >= 0, "Status line not found");
-      assert.ok(lines[statusLineIndex].includes('...'), "Status line should contain ellipsis for truncated output");
+      assert.ok(
+        lines[statusLineIndex].includes("..."),
+        "Status line should contain ellipsis for truncated output",
+      );
 
       // Position cursor on the status line
       const position = new vscode.Position(statusLineIndex, 5); // Somewhere in the middle of status line
       activeEditor.selection = new vscode.Selection(position, position);
 
       // Verify we're in folded mode initially
-      assert.ok(terminal.isFolded(), "Terminal should be in folded mode initially");
+      assert.ok(
+        terminal.isFolded(),
+        "Terminal should be in folded mode initially",
+      );
 
       // Test our toggleFold command when cursor is on status line with ellipsis
       // (This simulates the Tab key behavior)
       await vscode.commands.executeCommand("terminal-editor.toggleFold");
       await waitForSync();
-      
+
       // Verify the terminal is now unfolded
-      assert.ok(!terminal.isFolded(), "Terminal should be unfolded after Tab on status line with ellipsis");
+      assert.ok(
+        !terminal.isFolded(),
+        "Terminal should be unfolded after Tab on status line with ellipsis",
+      );
 
       // Test that positioning cursor on status line when it has ellipsis works
       // (We already tested this above and it worked)
-      
+
       // Now test positioning cursor on status line when it does NOT have ellipsis (unfolded)
       // Position cursor back on the status line (but now it shouldn't have ellipsis)
       const updatedText = activeEditor.document.getText();
-      const updatedLines = updatedText.split('\n');
+      const updatedLines = updatedText.split("\n");
       let updatedStatusLineIndex = -1;
       for (let i = 0; i < updatedLines.length; i++) {
-        if (updatedLines[i].startsWith('=') && updatedLines[i].includes('time:')) {
+        if (
+          updatedLines[i].startsWith("=") && updatedLines[i].includes("time:")
+        ) {
           updatedStatusLineIndex = i;
           break;
         }
       }
-      
+
       const statusPosition = new vscode.Position(updatedStatusLineIndex, 5);
-      activeEditor.selection = new vscode.Selection(statusPosition, statusPosition);
-      
+      activeEditor.selection = new vscode.Selection(
+        statusPosition,
+        statusPosition,
+      );
+
       // Call toggleFold - this should NOT toggle because there's no ellipsis in unfolded mode
       const wasUnfolded = !terminal.isFolded();
       await vscode.commands.executeCommand("terminal-editor.toggleFold");
       await waitForSync();
-      
+
       // Should execute default tab behavior since no ellipsis, so state shouldn't change
-      assert.strictEqual(terminal.isFolded(), !wasUnfolded, "Terminal fold state should not change when status line has no ellipsis");
-      
+      assert.strictEqual(
+        terminal.isFolded(),
+        !wasUnfolded,
+        "Terminal fold state should not change when status line has no ellipsis",
+      );
+
       // Position cursor on non-status line and test
       const nonStatusPosition = new vscode.Position(0, 0); // First line (command line)
-      activeEditor.selection = new vscode.Selection(nonStatusPosition, nonStatusPosition);
-      
+      activeEditor.selection = new vscode.Selection(
+        nonStatusPosition,
+        nonStatusPosition,
+      );
+
       // Call toggleFold - this should NOT toggle because cursor is not on status line
       const currentFoldState = terminal.isFolded();
       await vscode.commands.executeCommand("terminal-editor.toggleFold");
       await waitForSync();
-      
-      // Should execute default tab behavior, so fold state shouldn't change
-      assert.strictEqual(terminal.isFolded(), currentFoldState, "Terminal fold state should not change when cursor is not on status line");
 
+      // Should execute default tab behavior, so fold state shouldn't change
+      assert.strictEqual(
+        terminal.isFolded(),
+        currentFoldState,
+        "Terminal fold state should not change when cursor is not on status line",
+      );
     } finally {
       // Restore original getConfiguration
       vscode.workspace.getConfiguration = originalGetConfiguration;

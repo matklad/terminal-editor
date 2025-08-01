@@ -171,10 +171,15 @@ This will regenerate all snapshot files with the current test output.
   line AND status contains "..." (indicating truncated output). Otherwise executes default tab behavior.
   Added comprehensive test covering all scenarios: cursor on status line with/without ellipsis, and
   cursor on non-status line.
-- [ ] Start syntax highlighting work. Change the output to return not only `text`, but also `ranges`,
+- [X] Start syntax highlighting work. Change the output to return not only `text`, but also `ranges`,
   where ranges are highlighting ranges. Absolute offsets are used for ranges. tags: `keyword`,
   `punctuation` (for `=`), `status_ok`, `status_err`, `time`
-- [ ] Similarly, do the same for output. Detect file paths in format
+  Implementation notes: Added HighlightRange and TextWithRanges interfaces. Updated Terminal.status() 
+  to return ranges for punctuation (=), keywords (time:, status:), time values, and status values 
+  (status_ok for 0, status_err for non-zero). Updated Terminal.output() to return empty ranges for 
+  now (file path detection will come next). Updated extension.ts to handle the new TextWithRanges 
+  format. Added comprehensive tests for all syntax highlighting functionality.
+- [X] Similarly, do the same for output. Detect file paths in format
   `/path/to/file.ext:line:column`. `range` struct for such path should contain not only `path` tag,
   but also `{ file: string, line: number, column: number }` information.
   Also detect error messages like
@@ -182,3 +187,9 @@ This will regenerate all snapshot files with the current test output.
   src/tigerbeetle/main.zig:440:27: error: root source file struct 'stdx' has no member named 'unique_u18'
   ```
   The path and the error should use different highlights.
+  Implementation notes: Extended HighlightRange interface with optional file, line, column fields
+  and added "path" and "error" tags. Added detectHighlightRanges() method that uses regex patterns
+  to find file paths (pattern: /([^\s:]+\.[a-zA-Z]+):(\d+):(\d+)/g) and error messages 
+  (pattern: /\berror\s*:/gi). File paths are tagged as "path" with metadata, errors are tagged as 
+  "error". Added comprehensive tests covering single/multiple file paths, error messages, and 
+  combined detection. All tests pass.

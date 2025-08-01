@@ -100,7 +100,12 @@ export function activate(context: vscode.ExtensionContext) {
     toggleFold,
   );
 
-  context.subscriptions.push(revealCommand, runCommand, dwimCommand, toggleFoldCommand);
+  context.subscriptions.push(
+    revealCommand,
+    runCommand,
+    dwimCommand,
+    toggleFoldCommand,
+  );
 }
 
 export function deactivate() {}
@@ -215,9 +220,9 @@ async function doSync(editor: vscode.TextEditor) {
   }
 
   // Replace everything after user input
-  const statusText = terminal.status().text;
-  const outputText = terminal.output().text;
-  const newContent = statusText + "\n\n" + outputText;
+  const statusResult = terminal.status();
+  const outputResult = terminal.output();
+  const newContent = statusResult.text + "\n\n" + outputResult.text;
 
   const edit = new vscode.WorkspaceEdit();
   const uri = document.uri;
@@ -325,13 +330,13 @@ function shouldToggleFoldOnTab(editor: vscode.TextEditor): boolean {
   const position = editor.selection.active;
   const document = editor.document;
   const line = document.lineAt(position.line);
-  const statusText = terminal.status().text;
-  
+  const statusResult = terminal.status();
+
   // Check if current line is the status line (starts with "=" and contains status)
   const isStatusLine = line.text.startsWith("=") && line.text.includes("time:");
-  
+
   // Check if status contains "..." (indicating truncated output)
-  const hasEllipsis = statusText.includes("...");
-  
+  const hasEllipsis = statusResult.text.includes("...");
+
   return isStatusLine && hasEllipsis;
 }

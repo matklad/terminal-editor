@@ -11,6 +11,27 @@ export interface TerminalEvents {
   onRuntimeUpdate?: () => void;
 }
 
+export interface HighlightRange {
+  start: number;
+  end: number;
+  tag:
+    | "keyword"
+    | "punctuation"
+    | "status_ok"
+    | "status_err"
+    | "time"
+    | "path"
+    | "error";
+  file?: string;
+  line?: number;
+  column?: number;
+}
+
+export interface TextWithRanges {
+  text: string;
+  ranges: HighlightRange[];
+}
+
 export interface ParsedCommand {
   tokens: string[];
   cursorTokenIndex?: number;
@@ -45,9 +66,15 @@ export class Terminal {
     this.workingDirectory = workingDirectory || process.cwd();
   }
 
-  status(): { text: string } {
+  status(): TextWithRanges {
     if (!this.currentProcess) {
-      return { text: "= =" };
+      return {
+        text: "= =",
+        ranges: [
+          { start: 0, end: 1, tag: "punctuation" },
+          { start: 2, end: 3, tag: "punctuation" },
+        ],
+      };
     }
 
     const runtime = this.formatRuntime();
@@ -59,7 +86,49 @@ export class Terminal {
     const truncated = this.folded && this.isOutputTruncated();
     const ellipsis = truncated ? "..." : "";
 
-    return { text: `= time: ${runtime}${status} ${ellipsis}=` };
+    const text = `= time: ${runtime}${status} ${ellipsis}=`;
+    const ranges: HighlightRange[] = [];
+
+    // Opening '='
+    ranges.push({ start: 0, end: 1, tag: "punctuation" });
+
+    // 'time:' keyword
+    ranges.push({ start: 2, end: 7, tag: "keyword" });
+
+    // Runtime value
+    const runtimeStart = 8;
+    const runtimeEnd = runtimeStart + runtime.length;
+    ranges.push({ start: runtimeStart, end: runtimeEnd, tag: "time" });
+
+    if (status) {
+      // 'status:' keyword
+      const statusKeywordStart = runtimeEnd + 1;
+      const statusKeywordEnd = statusKeywordStart + 7;
+      ranges.push({
+        start: statusKeywordStart,
+        end: statusKeywordEnd,
+        tag: "keyword",
+      });
+
+      // Status value
+      const statusValueStart = statusKeywordEnd + 1;
+      const statusValueEnd = statusValueStart +
+        this.currentProcess.exitCode!.toString().length;
+      ranges.push({
+        start: statusValueStart,
+        end: statusValueEnd,
+        tag: this.currentProcess.exitCode === 0 ? "status_ok" : "status_err",
+      });
+    }
+
+    // Closing '='
+    ranges.push({
+      start: text.length - 1,
+      end: text.length,
+      tag: "punctuation",
+    });
+
+    return { text, ranges };
   }
 
   private formatRuntime(): string {
@@ -82,28 +151,75 @@ export class Terminal {
     return `${minutes}m ${seconds}s`;
   }
 
-  output(): { text: string } {
+  output(): TextWithRanges {
     if (!this.currentProcess) {
-      return { text: "" };
+      return { text: "", ranges: [] };
     }
 
     const combinedOutput = this.currentProcess.stdout +
       this.currentProcess.stderr;
 
+    let text: string;
     // In full mode, return all output
     if (!this.folded) {
-      return { text: combinedOutput };
+      text = combinedOutput;
+    } else {
+      // In folded mode, limit to maxOutputLines
+      const lines = combinedOutput.split("\n");
+      const maxLines = this.settings.maxOutputLines();
+      if (lines.length <= maxLines) {
+        text = combinedOutput;
+      } else {
+        const limitedLines = lines.slice(-maxLines);
+        text = limitedLines.join("\n");
+      }
     }
 
-    // In folded mode, limit to maxOutputLines
-    const lines = combinedOutput.split("\n");
-    const maxLines = this.settings.maxOutputLines();
-    if (lines.length <= maxLines) {
-      return { text: combinedOutput };
+    // Detect file paths and error messages
+    const ranges = this.detectHighlightRanges(text);
+    return { text, ranges };
+  }
+
+  private detectHighlightRanges(text: string): HighlightRange[] {
+    const ranges: HighlightRange[] = [];
+
+    // Pattern for file paths: capture file.ext:line:column (including absolute paths)
+    const filePathPattern = /([^\s:]+\.[a-zA-Z]+):(\d+):(\d+)/g;
+
+    // Pattern for error messages: "error:" (with colon) case insensitive
+    const errorPattern = /\berror\s*:/gi;
+
+    let match;
+
+    // Find file paths
+    while ((match = filePathPattern.exec(text)) !== null) {
+      const filePath = match[1];
+      const line = parseInt(match[2], 10);
+      const column = parseInt(match[3], 10);
+
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        tag: "path",
+        file: filePath,
+        line: line,
+        column: column,
+      });
     }
 
-    const limitedLines = lines.slice(-maxLines);
-    return { text: limitedLines.join("\n") };
+    // Reset regex lastIndex for error pattern
+    errorPattern.lastIndex = 0;
+
+    // Find error messages
+    while ((match = errorPattern.exec(text)) !== null) {
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        tag: "error",
+      });
+    }
+
+    return ranges;
   }
 
   run(commandString: string): void {
@@ -222,7 +338,7 @@ export class Terminal {
       this.currentProcess.stderr;
     const lines = combinedOutput.split("\n");
     const maxLines = this.settings.maxOutputLines();
-    
+
     return lines.length > maxLines;
   }
 }
