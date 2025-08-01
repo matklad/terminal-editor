@@ -28,13 +28,23 @@ The extension is just three files:
   Code API.
 * `src/extension.tests.ts` are the tests.
 
-## Testing
+## Workflows
 
 The tests use snapshot testing to verify output format. Snapshots are stored in `src/__snapshots__/` and should be committed to git.
 
 To update snapshots after fixing issues:
 ```bash
 UPDATE_SNAPSHOTS=true npm run test
+```
+
+To run slow tests (avoid in general):
+```bash
+SLOW_TESTS=true npm run test
+```
+
+Format code:
+```bash
+deno fmt src/
 ```
 
 ## Plan
