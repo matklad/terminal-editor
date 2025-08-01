@@ -171,3 +171,14 @@ This will regenerate all snapshot files with the current test output.
   line AND status contains "..." (indicating truncated output). Otherwise executes default tab behavior.
   Added comprehensive test covering all scenarios: cursor on status line with/without ellipsis, and
   cursor on non-status line.
+- [ ] Start syntax highlighting work. Change the output to return not only `text`, but also `ranges`,
+  where ranges are highlighting ranges. Absolute offsets are used for ranges. tags: `keyword`,
+  `punctuation` (for `=`), `status_ok`, `status_err`, `time`
+- [ ] Similarly, do the same for output. Detect file paths in format
+  `/path/to/file.ext:line:column`. `range` struct for such path should contain not only `path` tag,
+  but also `{ file: string, line: number, column: number }` information.
+  Also detect error messages like
+  ```
+  src/tigerbeetle/main.zig:440:27: error: root source file struct 'stdx' has no member named 'unique_u18'
+  ```
+  The path and the error should use different highlights.
