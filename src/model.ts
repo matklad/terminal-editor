@@ -32,6 +32,12 @@ export interface TextWithRanges {
   ranges: HighlightRange[];
 }
 
+export interface Token {
+  start: number;
+  end: number;
+  tag: "word" | "quoted" | "whitespace";
+}
+
 export interface ParsedCommand {
   tokens: string[];
   cursorTokenIndex?: number;
@@ -345,83 +351,152 @@ export class Terminal {
   }
 }
 
+export function tokenizeCommand(command: string): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+
+  while (i < command.length) {
+    const start = i;
+
+    if (command[i] === " " || command[i] === "\t") {
+      // Whitespace token
+      while (i < command.length && (command[i] === " " || command[i] === "\t")) {
+        i++;
+      }
+      tokens.push({
+        start,
+        end: i,
+        tag: "whitespace",
+      });
+    } else if (command[i] === '"') {
+      // Quoted token
+      i++; // Skip opening quote
+      const contentStart = i;
+      
+      while (i < command.length && command[i] !== '"') {
+        i++;
+      }
+      
+      const content = command.slice(contentStart, i);
+      
+      if (i < command.length) {
+        i++; // Skip closing quote
+      }
+      
+      tokens.push({
+        start,
+        end: i,
+        tag: "quoted",
+      });
+    } else {
+      // Word token
+      while (i < command.length && command[i] !== " " && command[i] !== "\t") {
+        i++;
+      }
+      tokens.push({
+        start,
+        end: i,
+        tag: "word",
+      });
+    }
+  }
+
+  // Assert range consistency
+  for (let j = 0; j < tokens.length; j++) {
+    const token = tokens[j];
+    
+    // Check that start is at expected position
+    if (j === 0) {
+      console.assert(token.start === 0, `First token should start at 0, got ${token.start}`);
+    } else {
+      const prevToken = tokens[j - 1];
+      console.assert(token.start === prevToken.end, 
+        `Token ${j} should start at ${prevToken.end}, got ${token.start}`);
+    }
+    
+    // Check that range is valid
+    console.assert(token.start < token.end, 
+      `Token ${j} should have start < end, got ${token.start} >= ${token.end}`);
+  }
+  
+  // Check that ranges cover entire input
+  if (tokens.length > 0) {
+    const lastToken = tokens[tokens.length - 1];
+    console.assert(lastToken.end === command.length, 
+      `Last token should end at ${command.length}, got ${lastToken.end}`);
+  } else {
+    console.assert(command.length === 0, 
+      `Empty token list should only occur for empty command, got length ${command.length}`);
+  }
+
+  return tokens;
+}
+
 export function parseCommand(
   command: string,
   cursorPosition?: number,
 ): ParsedCommand {
+  const allTokens = tokenizeCommand(command);
   const tokens: string[] = [];
   let cursorTokenIndex: number | undefined;
   let cursorTokenOffset: number | undefined;
-  let i = 0;
 
-  // Single pass: tokenize and track cursor position simultaneously
-  while (i < command.length) {
-    // Skip whitespace
-    while (i < command.length && (command[i] === " " || command[i] === "\t")) {
+  // Extract non-whitespace tokens and track cursor position
+  let currentTokenIndex = 0;
+  
+  for (const token of allTokens) {
+    if (token.tag === "whitespace") {
       // Check if cursor is on whitespace
-      if (cursorPosition === i) {
+      if (cursorPosition !== undefined && cursorPosition >= token.start && cursorPosition < token.end) {
         cursorTokenIndex = undefined;
         cursorTokenOffset = undefined;
       }
-      i++;
-    }
-
-    if (i >= command.length) {
-      break;
-    }
-
-    // Parse token
-    const tokenStart = i;
-    const tokenIndex = tokens.length;
-    let token = "";
-
-    if (command[i] === '"') {
-      // Quoted token
-      const quoteStart = i;
-      i++; // Skip opening quote
-
-      while (i < command.length && command[i] !== '"') {
-        // Check cursor position within quoted content
-        if (cursorPosition === i) {
-          cursorTokenIndex = tokenIndex;
-          cursorTokenOffset = i - quoteStart - 1; // Offset from start of content (excluding quote)
-        }
-        token += command[i];
-        i++;
-      }
-
-      if (i < command.length) {
-        i++; // Skip closing quote
-      }
-
-      // Check if cursor is at the opening quote
-      if (cursorPosition === quoteStart) {
-        cursorTokenIndex = tokenIndex;
-        cursorTokenOffset = 0;
-      }
     } else {
-      // Unquoted token
-      while (i < command.length && command[i] !== " " && command[i] !== "\t") {
-        // Check cursor position within token
-        if (cursorPosition === i) {
-          cursorTokenIndex = tokenIndex;
-          cursorTokenOffset = i - tokenStart;
+      // Non-whitespace token (word or quoted)
+      let tokenValue: string;
+      if (token.tag === "quoted") {
+        // For quoted tokens, extract content without quotes
+        const fullText = command.slice(token.start, token.end);
+        if (fullText.startsWith('"') && fullText.length > 1) {
+          const endIndex = fullText.endsWith('"') ? -1 : fullText.length;
+          tokenValue = fullText.slice(1, endIndex);
+        } else {
+          tokenValue = fullText;
         }
-        token += command[i];
-        i++;
+      } else {
+        // For word tokens, use the full range
+        tokenValue = command.slice(token.start, token.end);
       }
+      
+      tokens.push(tokenValue);
+      
+      // Check if cursor is within this token
+      if (cursorPosition !== undefined && cursorPosition >= token.start && cursorPosition < token.end) {
+        cursorTokenIndex = currentTokenIndex;
+        
+        if (token.tag === "quoted") {
+          // For quoted tokens, cursor position relative to quote start
+          if (cursorPosition === token.start) {
+            // Cursor at opening quote
+            cursorTokenOffset = 0;
+          } else {
+            // Cursor within content (exclude opening quote)
+            cursorTokenOffset = cursorPosition - token.start - 1;
+          }
+        } else {
+          // For word tokens, cursor position relative to token start
+          cursorTokenOffset = cursorPosition - token.start;
+        }
+      }
+      
+      currentTokenIndex++;
     }
-
-    tokens.push(token);
   }
 
   // Handle cursor at end of command
   if (cursorPosition === command.length) {
-    if (
-      command.length === 0 || command[command.length - 1] === " " ||
-      command[command.length - 1] === "\t"
-    ) {
-      // Cursor at end on whitespace
+    if (allTokens.length === 0 || allTokens[allTokens.length - 1].tag === "whitespace") {
+      // Cursor at end on whitespace or empty command
       cursorTokenIndex = undefined;
       cursorTokenOffset = undefined;
     } else if (tokens.length > 0) {
