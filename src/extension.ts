@@ -8,7 +8,7 @@ import {
 
 interface DocumentRanges {
   command: vscode.Range;
-  status: vscode.Range| undefined;
+  status: vscode.Range | undefined;
   output: vscode.Range | undefined;
 }
 
@@ -139,11 +139,15 @@ export class TerminalSemanticTokensProvider
   implements vscode.DocumentSemanticTokensProvider {
   private static readonly legend = new vscode.SemanticTokensLegend([
     "keyword",
-    "operator",
+    "operator", 
     "string",
     "number",
     "property",
     "variable",
+    "comment",
+    "type",
+    "decorator",
+    "regexp",
   ]);
 
   static getLegend(): vscode.SemanticTokensLegend {
@@ -227,6 +231,27 @@ export class TerminalSemanticTokensProvider
         return 2; // string
       case "error":
         return 4; // property
+      // ANSI color and style mappings using VSCode builtin token types
+      case "ansi_dim":
+        return 6; // comment (dim/faded text)
+      case "ansi_bold":
+        return 7; // type (bold text)
+      case "ansi_underline":
+        return 8; // decorator (underlined text)
+      case "ansi_red":
+        return 4; // property (red text)
+      case "ansi_green": 
+        return 2; // string (green text)
+      case "ansi_yellow":
+        return 3; // number (yellow text)
+      case "ansi_blue":
+        return 0; // keyword (blue text)
+      case "ansi_magenta":
+        return 7; // type (magenta text)
+      case "ansi_cyan":
+        return 2; // string (cyan text) 
+      case "ansi_white":
+        return 5; // variable (white text)
       default:
         return undefined;
     }
@@ -350,7 +375,7 @@ export function visibleTerminal(): vscode.TextEditor | undefined {
   );
 }
 
-function findInput(editor: vscode.TextEditor): DocumentRanges{
+function findInput(editor: vscode.TextEditor): DocumentRanges {
   const document = editor.document;
   const text = document.getText();
   const lines = text.split("\n");
@@ -367,7 +392,10 @@ function findInput(editor: vscode.TextEditor): DocumentRanges{
   // If no status line found, its just user input
   if (splitLine === lines.length) {
     return {
-      command: new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)),
+      command: new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(document.getText().length),
+      ),
       status: undefined,
       output: undefined,
     };

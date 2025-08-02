@@ -1,3 +1,4 @@
+import { env as my_env } from "process";
 import { ChildProcess, spawn } from "child_process";
 
 export interface TerminalSettings {
@@ -20,7 +21,17 @@ export interface HighlightRange {
     | "status_err"
     | "time"
     | "path"
-    | "error";
+    | "error"
+    | "ansi_dim"
+    | "ansi_bold"
+    | "ansi_underline"
+    | "ansi_red"
+    | "ansi_green"
+    | "ansi_yellow"
+    | "ansi_blue"
+    | "ansi_magenta"
+    | "ansi_cyan"
+    | "ansi_white";
   file?: string;
   line?: number;
   column?: number;
@@ -48,8 +59,8 @@ interface ProcessInfo {
   startTime: Date;
   endTime?: Date;
   exitCode?: number;
-  stdout: string;
-  stderr: string;
+  stdout: ANSIText;
+  stderr: ANSIText;
   commandLine: string;
   completion: Promise<void>;
   cleanup: (code: number | undefined) => void;
@@ -164,26 +175,59 @@ export class Terminal {
       return { text: "", ranges: [] };
     }
 
-    const combinedOutput = this.currentProcess.stdout +
-      this.currentProcess.stderr;
+    // Combine stdout and stderr text and ranges
+    const stdoutResult = this.currentProcess.stdout.getTextWithRanges();
+    const stderrResult = this.currentProcess.stderr.getTextWithRanges();
+    
+    const combinedText = stdoutResult.text + stderrResult.text;
+    
+    // Adjust stderr ranges to account for stdout text length
+    const adjustedStderrRanges = stderrResult.ranges.map(range => ({
+      ...range,
+      start: range.start + stdoutResult.text.length,
+      end: range.end + stdoutResult.text.length,
+    }));
+    
+    const combinedRanges = [...stdoutResult.ranges, ...adjustedStderrRanges];
 
     let text: string;
+    let ranges: HighlightRange[];
+    
     // In full mode, return all output
     if (!this.folded) {
-      text = combinedOutput;
+      text = combinedText;
+      ranges = combinedRanges;
     } else {
       // In folded mode, limit to maxOutputLines
-      const lines = combinedOutput.split("\n");
+      const lines = combinedText.split("\n");
       const maxLines = this.settings.maxOutputLines();
       if (lines.length <= maxLines) {
-        text = combinedOutput;
+        text = combinedText;
+        ranges = combinedRanges;
       } else {
         const limitedLines = lines.slice(-maxLines);
         text = limitedLines.join("\n");
+        
+        // Calculate the character offset where truncation begins
+        const fullLines = combinedText.split("\n");
+        const truncatedLines = fullLines.length - maxLines;
+        let truncationOffset = 0;
+        for (let i = 0; i < truncatedLines; i++) {
+          truncationOffset += fullLines[i].length + 1; // +1 for newline
+        }
+        
+        // Filter and adjust ranges that fall within the truncated text
+        ranges = combinedRanges
+          .filter(range => range.start >= truncationOffset)
+          .map(range => ({
+            ...range,
+            start: range.start - truncationOffset,
+            end: range.end - truncationOffset,
+          }));
       }
     }
 
-    return { text, ranges: [] };
+    return { text, ranges };
   }
 
   run(commandString: string): void {
@@ -204,7 +248,13 @@ export class Terminal {
 
     // Start new process
     const [program, ...args] = parsed.tokens;
-    const process = spawn(program, args, { cwd: this.workingDirectory });
+    const process = spawn(program, args, {
+      cwd: this.workingDirectory,
+      env: {
+        ...my_env,
+        "CLICOLOR_FORCE": "1",
+      },
+    });
 
     let completionResolve: () => void;
     const completion = new Promise<void>((resolve) => {
@@ -215,8 +265,8 @@ export class Terminal {
       process,
       startTime: new Date(),
       exitCode: undefined,
-      stdout: "",
-      stderr: "",
+      stdout: new ANSIText(),
+      stderr: new ANSIText(),
       commandLine: commandString,
       completion,
       runtimeUpdateInterval: setInterval(
@@ -224,7 +274,9 @@ export class Terminal {
         1000,
       ),
       cleanup: (code: number | undefined) => {
-        if (processInfo.exitCode !== undefined) return;
+        if (processInfo.exitCode !== undefined) {
+          return;
+        }
         processInfo.exitCode = (code === undefined) ? -1 : code;
         clearInterval(processInfo.runtimeUpdateInterval);
         this.events.onStateChange?.();
@@ -235,7 +287,7 @@ export class Terminal {
 
     // Handle spawn errors (e.g., command not found)
     process.on("error", (error: Error) => {
-      processInfo.stderr += error.message + "\n";
+      processInfo.stderr.append(error.message + "\n");
       processInfo.cleanup(127);
     });
 
@@ -245,13 +297,13 @@ export class Terminal {
 
     // Capture stdout
     process.stdout.on("data", (data: Buffer) => {
-      processInfo.stdout += data.toString();
+      processInfo.stdout.append(data.toString());
       this.events.onOutput?.();
     });
 
     // Capture stderr
     process.stderr.on("data", (data: Buffer) => {
-      processInfo.stderr += data.toString();
+      processInfo.stderr.append(data.toString());
       this.events.onOutput?.();
     });
 
@@ -290,8 +342,8 @@ export class Terminal {
       return false;
     }
 
-    const combinedOutput = this.currentProcess.stdout +
-      this.currentProcess.stderr;
+    const combinedOutput = this.currentProcess.stdout.getResultingText() +
+      this.currentProcess.stderr.getResultingText();
     const lines = combinedOutput.split("\n");
     const maxLines = this.settings.maxOutputLines();
 
@@ -481,4 +533,300 @@ export function parseCommand(
     cursorTokenIndex,
     cursorTokenOffset,
   };
+}
+
+export class ANSIText {
+  private rawInput: string = "";
+  private resultingText: string = "";
+  private ranges: HighlightRange[] = [];
+
+  append(input: string): void {
+    this.rawInput += input;
+    this.processANSI();
+  }
+
+  getRawInput(): string {
+    return this.rawInput;
+  }
+
+  getResultingText(): string {
+    return this.resultingText;
+  }
+
+  getRanges(): HighlightRange[] {
+    return [...this.ranges];
+  }
+
+  getTextWithRanges(): TextWithRanges {
+    return {
+      text: this.resultingText,
+      ranges: [...this.ranges]
+    };
+  }
+
+  private processANSI(): void {
+    let processed = "";
+    let currentPos = 0;
+    const ansiRanges: HighlightRange[] = [];
+
+    // Track current ANSI state
+    let currentStyles: Set<string> = new Set();
+    let styleStartPositions: Map<string, number> = new Map();
+
+    // Combined regex for both color codes and character set changes
+    // \x1b[...m for colors, \x1b(...) for character sets
+    const ansiRegex = /\x1b(?:\[([0-9;]*)m|\(([0B]))/g;
+
+    let match;
+    let lastIndex = 0;
+    let inLineDrawingMode = false;
+
+    while ((match = ansiRegex.exec(this.rawInput)) !== null) {
+      // Add text before this ANSI code, converting line drawing characters if needed
+      const textBefore = this.rawInput.slice(lastIndex, match.index);
+      if (inLineDrawingMode) {
+        processed += this.convertLineDrawingChars(textBefore);
+      } else {
+        processed += textBefore;
+      }
+      currentPos += textBefore.length;
+
+      if (match[1] !== undefined) {
+        // Color escape sequence \x1b[...m
+        const codes = match[1].split(';').map(code => parseInt(code, 10));
+        for (const code of codes) {
+          this.processANSICode(code, currentStyles, styleStartPositions, currentPos, ansiRanges);
+        }
+      } else if (match[2] !== undefined) {
+        // Character set escape sequence \x1b(...
+        const charset = match[2];
+        if (charset === '0') {
+          inLineDrawingMode = true; // Enter DEC Special Character Set
+        } else if (charset === 'B') {
+          inLineDrawingMode = false; // Return to ASCII
+        }
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text after last ANSI code
+    const remainingText = this.rawInput.slice(lastIndex);
+    if (inLineDrawingMode) {
+      processed += this.convertLineDrawingChars(remainingText);
+    } else {
+      processed += remainingText;
+    }
+    currentPos += remainingText.length;
+
+    // Close any remaining open styles
+    for (const [style, startPos] of styleStartPositions) {
+      if (startPos < currentPos) {
+        ansiRanges.push({
+          start: startPos,
+          end: currentPos,
+          tag: this.styleToTag(style)
+        });
+      }
+    }
+
+    this.resultingText = processed;
+
+    // Combine ANSI ranges with file path and error detection
+    this.ranges = [...ansiRanges, ...this.detectHighlightRanges(processed)];
+
+    // Sort ranges by start position to ensure proper ordering
+    this.ranges.sort((a, b) => a.start - b.start);
+  }
+
+  private convertLineDrawingChars(text: string): string {
+    // Convert DEC Special Character Set to Unicode equivalents
+    return text.replace(/./g, (char) => {
+      switch (char) {
+        case 'q': return '─'; // horizontal line
+        case 'x': return '│'; // vertical line  
+        case 'l': return '┌'; // top-left corner
+        case 'k': return '┐'; // top-right corner
+        case 'm': return '└'; // bottom-left corner
+        case 'j': return '┘'; // bottom-right corner
+        case 't': return '├'; // tee pointing right
+        case 'u': return '┤'; // tee pointing left
+        case 'v': return '┴'; // tee pointing up
+        case 'w': return '┬'; // tee pointing down
+        case 'n': return '┼'; // cross
+        default: return char; // keep other characters as-is
+      }
+    });
+  }
+
+  private processANSICode(
+    code: number,
+    currentStyles: Set<string>,
+    styleStartPositions: Map<string, number>,
+    currentPos: number,
+    ansiRanges: HighlightRange[]
+  ): void {
+    // Close existing ranges when style changes
+    const closeStyle = (style: string) => {
+      if (styleStartPositions.has(style)) {
+        const startPos = styleStartPositions.get(style)!;
+        if (startPos < currentPos) {
+          ansiRanges.push({
+            start: startPos,
+            end: currentPos,
+            tag: this.styleToTag(style)
+          });
+        }
+        styleStartPositions.delete(style);
+        currentStyles.delete(style);
+      }
+    };
+
+    const openStyle = (style: string) => {
+      if (!currentStyles.has(style)) {
+        currentStyles.add(style);
+        styleStartPositions.set(style, currentPos);
+      }
+    };
+
+    switch (code) {
+      case 0: // Reset all
+        for (const style of currentStyles) {
+          closeStyle(style);
+        }
+        break;
+      case 1: // Bold
+        openStyle("bold");
+        break;
+      case 2: // Dim
+        openStyle("dim");
+        break;
+      case 4: // Underline
+        openStyle("underline");
+        break;
+      case 22: // Normal intensity (turn off bold/dim)
+        closeStyle("bold");
+        closeStyle("dim");
+        break;
+      case 24: // No underline
+        closeStyle("underline");
+        break;
+      case 30: // Black (foreground)
+        // Close existing color styles
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        break;
+      case 31: // Red
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        openStyle("red");
+        break;
+      case 32: // Green
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        openStyle("green");
+        break;
+      case 33: // Yellow
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        openStyle("yellow");
+        break;
+      case 34: // Blue
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        openStyle("blue");
+        break;
+      case 35: // Magenta
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        openStyle("magenta");
+        break;
+      case 36: // Cyan
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        openStyle("cyan");
+        break;
+      case 37: // White
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        openStyle("white");
+        break;
+      case 39: // Default foreground color
+        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        break;
+    }
+  }
+
+  private closeColorStyles(
+    currentStyles: Set<string>,
+    styleStartPositions: Map<string, number>,
+    currentPos: number,
+    ansiRanges: HighlightRange[]
+  ): void {
+    const colorStyles = ["red", "green", "yellow", "blue", "magenta", "cyan", "white"];
+    for (const color of colorStyles) {
+      if (styleStartPositions.has(color)) {
+        const startPos = styleStartPositions.get(color)!;
+        if (startPos < currentPos) {
+          ansiRanges.push({
+            start: startPos,
+            end: currentPos,
+            tag: this.styleToTag(color)
+          });
+        }
+        styleStartPositions.delete(color);
+        currentStyles.delete(color);
+      }
+    }
+  }
+
+  private styleToTag(style: string): HighlightRange["tag"] {
+    switch (style) {
+      case "dim": return "ansi_dim";
+      case "bold": return "ansi_bold";
+      case "underline": return "ansi_underline";
+      case "red": return "ansi_red";
+      case "green": return "ansi_green";
+      case "yellow": return "ansi_yellow";
+      case "blue": return "ansi_blue";
+      case "magenta": return "ansi_magenta";
+      case "cyan": return "ansi_cyan";
+      case "white": return "ansi_white";
+      default: return "ansi_dim"; // fallback
+    }
+  }
+
+  private detectHighlightRanges(text: string): HighlightRange[] {
+    const ranges: HighlightRange[] = [];
+
+    // Pattern for file paths: capture file.ext:line:column (including absolute paths)
+    const filePathPattern = /([^\s:]+\.[a-zA-Z]+):(\d+):(\d+)/g;
+
+    // Pattern for error messages: "error:" (with colon) case insensitive
+    const errorPattern = /\berror\s*:/gi;
+
+    let match;
+
+    // Find file paths
+    while ((match = filePathPattern.exec(text)) !== null) {
+      const filePath = match[1];
+      const line = parseInt(match[2], 10);
+      const column = parseInt(match[3], 10);
+
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        tag: "path",
+        file: filePath,
+        line: line,
+        column: column,
+      });
+    }
+
+    // Reset regex lastIndex for error pattern
+    errorPattern.lastIndex = 0;
+
+    // Find error messages
+    while ((match = errorPattern.exec(text)) !== null) {
+      ranges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        tag: "error",
+      });
+    }
+
+    return ranges;
+  }
 }
