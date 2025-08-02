@@ -1,5 +1,4 @@
 import { ChildProcess, spawn } from "child_process";
-import { syncPending } from "./extension";
 
 export interface TerminalSettings {
   maxOutputLines(): number;
@@ -52,7 +51,8 @@ interface ProcessInfo {
   stdout: string;
   stderr: string;
   commandLine: string;
-  completion: Promise<number>;
+  completion: Promise<void>;
+  cleanup: (code: number | undefined) => void;
   runtimeUpdateInterval?: NodeJS.Timeout;
 }
 
@@ -232,9 +232,10 @@ export class Terminal {
 
   run(commandString: string): void {
     // Kill existing process if running and stop runtime updates
-    if (this.currentProcess && this.currentProcess.exitCode === undefined) {
-      clearInterval(this.currentProcess.runtimeUpdateInterval);
+    if (this.currentProcess) {
       this.currentProcess.process.kill("SIGKILL");
+      this.currentProcess.cleanup(-1);
+      this.currentProcess = undefined;
     }
 
     // Parse command
@@ -249,8 +250,8 @@ export class Terminal {
     const [program, ...args] = parsed.tokens;
     const process = spawn(program, args, { cwd: this.workingDirectory });
 
-    let completionResolve: (code: number) => void;
-    const completion = new Promise<number>((resolve) => {
+    let completionResolve: () => void;
+    const completion = new Promise<void>((resolve) => {
       completionResolve = resolve;
     });
 
@@ -262,50 +263,41 @@ export class Terminal {
       stderr: "",
       commandLine: commandString,
       completion,
-      runtimeUpdateInterval: setInterval(() => {
-        if (processInfo.exitCode !== undefined) {
-          clearInterval(processInfo.runtimeUpdateInterval);
-          processInfo.runtimeUpdateInterval = undefined;
-          return;
-        }
-        this.events.onRuntimeUpdate?.();
-      }, 1000),
+      runtimeUpdateInterval: setInterval(
+        () => this.events.onRuntimeUpdate?.(),
+        1000,
+      ),
+      cleanup: (code: number | undefined) => {
+        if (processInfo.exitCode !== undefined) return;
+        processInfo.exitCode = (code === undefined) ? -1 : code;
+        clearInterval(processInfo.runtimeUpdateInterval);
+        this.events.onStateChange?.();
+        completionResolve();
+      },
     };
     this.currentProcess = processInfo;
-
-    // Handle process close (normal exit)
-    process.on("close", (code: number) => {
-      processInfo.exitCode = code;
-      processInfo.endTime = new Date();
-      this.events.onStateChange?.();
-      completionResolve(code);
-    });
 
     // Handle spawn errors (e.g., command not found)
     process.on("error", (error: Error) => {
       processInfo.stderr += error.message + "\n";
-      processInfo.exitCode = 127; // Standard exit code for command not found
-      processInfo.endTime = new Date();
-      this.events.onOutput?.();
-      this.events.onStateChange?.();
-      completionResolve(127);
+      processInfo.cleanup(127);
     });
 
-    // Capture stdout (only if it exists)
-    if (process.stdout) {
-      process.stdout.on("data", (data: Buffer) => {
-        processInfo.stdout += data.toString();
-        this.events.onOutput?.();
-      });
-    }
+    // Handle process close (normal exit)
+    process.on("close", (code: number) => processInfo.cleanup(code));
+    process.on("exit", (code: number) => processInfo.cleanup(code));
 
-    // Capture stderr (only if it exists)
-    if (process.stderr) {
-      process.stderr.on("data", (data: Buffer) => {
-        processInfo.stderr += data.toString();
-        this.events.onOutput?.();
-      });
-    }
+    // Capture stdout
+    process.stdout.on("data", (data: Buffer) => {
+      processInfo.stdout += data.toString();
+      this.events.onOutput?.();
+    });
+
+    // Capture stderr
+    process.stderr.on("data", (data: Buffer) => {
+      processInfo.stderr += data.toString();
+      this.events.onOutput?.();
+    });
 
     // Notify that state has changed (process started)
     this.events.onStateChange?.();
@@ -360,7 +352,9 @@ export function tokenizeCommand(command: string): Token[] {
 
     if (command[i] === " " || command[i] === "\t") {
       // Whitespace token
-      while (i < command.length && (command[i] === " " || command[i] === "\t")) {
+      while (
+        i < command.length && (command[i] === " " || command[i] === "\t")
+      ) {
         i++;
       }
       tokens.push({
@@ -372,17 +366,17 @@ export function tokenizeCommand(command: string): Token[] {
       // Quoted token
       i++; // Skip opening quote
       const contentStart = i;
-      
+
       while (i < command.length && command[i] !== '"') {
         i++;
       }
-      
+
       const content = command.slice(contentStart, i);
-      
+
       if (i < command.length) {
         i++; // Skip closing quote
       }
-      
+
       tokens.push({
         start,
         end: i,
@@ -404,29 +398,40 @@ export function tokenizeCommand(command: string): Token[] {
   // Assert range consistency
   for (let j = 0; j < tokens.length; j++) {
     const token = tokens[j];
-    
+
     // Check that start is at expected position
     if (j === 0) {
-      console.assert(token.start === 0, `First token should start at 0, got ${token.start}`);
+      console.assert(
+        token.start === 0,
+        `First token should start at 0, got ${token.start}`,
+      );
     } else {
       const prevToken = tokens[j - 1];
-      console.assert(token.start === prevToken.end, 
-        `Token ${j} should start at ${prevToken.end}, got ${token.start}`);
+      console.assert(
+        token.start === prevToken.end,
+        `Token ${j} should start at ${prevToken.end}, got ${token.start}`,
+      );
     }
-    
+
     // Check that range is valid
-    console.assert(token.start < token.end, 
-      `Token ${j} should have start < end, got ${token.start} >= ${token.end}`);
+    console.assert(
+      token.start < token.end,
+      `Token ${j} should have start < end, got ${token.start} >= ${token.end}`,
+    );
   }
-  
+
   // Check that ranges cover entire input
   if (tokens.length > 0) {
     const lastToken = tokens[tokens.length - 1];
-    console.assert(lastToken.end === command.length, 
-      `Last token should end at ${command.length}, got ${lastToken.end}`);
+    console.assert(
+      lastToken.end === command.length,
+      `Last token should end at ${command.length}, got ${lastToken.end}`,
+    );
   } else {
-    console.assert(command.length === 0, 
-      `Empty token list should only occur for empty command, got length ${command.length}`);
+    console.assert(
+      command.length === 0,
+      `Empty token list should only occur for empty command, got length ${command.length}`,
+    );
   }
 
   return tokens;
@@ -443,11 +448,14 @@ export function parseCommand(
 
   // Extract non-whitespace tokens and track cursor position
   let currentTokenIndex = 0;
-  
+
   for (const token of allTokens) {
     if (token.tag === "whitespace") {
       // Check if cursor is on whitespace
-      if (cursorPosition !== undefined && cursorPosition >= token.start && cursorPosition < token.end) {
+      if (
+        cursorPosition !== undefined && cursorPosition >= token.start &&
+        cursorPosition < token.end
+      ) {
         cursorTokenIndex = undefined;
         cursorTokenOffset = undefined;
       }
@@ -467,13 +475,16 @@ export function parseCommand(
         // For word tokens, use the full range
         tokenValue = command.slice(token.start, token.end);
       }
-      
+
       tokens.push(tokenValue);
-      
+
       // Check if cursor is within this token
-      if (cursorPosition !== undefined && cursorPosition >= token.start && cursorPosition < token.end) {
+      if (
+        cursorPosition !== undefined && cursorPosition >= token.start &&
+        cursorPosition < token.end
+      ) {
         cursorTokenIndex = currentTokenIndex;
-        
+
         if (token.tag === "quoted") {
           // For quoted tokens, cursor position relative to quote start
           if (cursorPosition === token.start) {
@@ -488,14 +499,17 @@ export function parseCommand(
           cursorTokenOffset = cursorPosition - token.start;
         }
       }
-      
+
       currentTokenIndex++;
     }
   }
 
   // Handle cursor at end of command
   if (cursorPosition === command.length) {
-    if (allTokens.length === 0 || allTokens[allTokens.length - 1].tag === "whitespace") {
+    if (
+      allTokens.length === 0 ||
+      allTokens[allTokens.length - 1].tag === "whitespace"
+    ) {
       // Cursor at end on whitespace or empty command
       cursorTokenIndex = undefined;
       cursorTokenOffset = undefined;

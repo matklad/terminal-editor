@@ -156,7 +156,9 @@ export class TerminalSemanticTokensProvider
   ): vscode.ProviderResult<vscode.SemanticTokens> {
     const ranges = findInput({ document } as vscode.TextEditor);
     if (!ranges) {
-      return new vscode.SemanticTokensBuilder(TerminalSemanticTokensProvider.legend).build();
+      return new vscode.SemanticTokensBuilder(
+        TerminalSemanticTokensProvider.legend,
+      ).build();
     }
 
     const statusResult = terminal.status();
@@ -384,7 +386,7 @@ function findInput(editor: vscode.TextEditor): DocumentRanges | null {
 
   // The document structure is:
   // - Lines 0 to (splitLine-2): command text
-  // - Line (splitLine-1): blank line separating command from status  
+  // - Line (splitLine-1): blank line separating command from status
   // - Line splitLine: status line (starts with '=')
   // - Line (splitLine+1): blank line separating status from output
   // - Lines (splitLine+2) and beyond: output
@@ -392,14 +394,14 @@ function findInput(editor: vscode.TextEditor): DocumentRanges | null {
   // Command range: from start of document to just before the blank line before status
   // The document structure should be:
   // Line 0+: command text (may be multiple lines)
-  // Line X: blank line  
+  // Line X: blank line
   // Line X+1: status line (starts with '=')
   // So command ends at the line before the blank line before status
-  
+
   const commandStart = new vscode.Position(0, 0);
   let commandEndLine: number;
   let commandEndChar: number;
-  
+
   if (splitLine <= 1) {
     // If status is at line 0 or 1, there's no room for command text
     commandEndLine = 0;
@@ -408,15 +410,17 @@ function findInput(editor: vscode.TextEditor): DocumentRanges | null {
     // Command ends at the line before the blank line before status
     // So if status is at line 2, blank line is at 1, command ends at line 0
     commandEndLine = splitLine - 2;
-    commandEndChar = commandEndLine < lines.length ? lines[commandEndLine].length : 0;
-    
+    commandEndChar = commandEndLine < lines.length
+      ? lines[commandEndLine].length
+      : 0;
+
     // Make sure we don't go negative
     if (commandEndLine < 0) {
       commandEndLine = 0;
       commandEndChar = 0;
     }
   }
-  
+
   const commandEnd = new vscode.Position(commandEndLine, commandEndChar);
   const commandRange = new vscode.Range(commandStart, commandEnd);
 
@@ -428,7 +432,9 @@ function findInput(editor: vscode.TextEditor): DocumentRanges | null {
   // Output range: from two lines after status to end of document
   const outputStart = new vscode.Position(splitLine + 2, 0);
   const lastLineIndex = Math.max(0, document.lineCount - 1);
-  const lastLineLength = lastLineIndex < lines.length ? lines[lastLineIndex].length : 0;
+  const lastLineLength = lastLineIndex < lines.length
+    ? lines[lastLineIndex].length
+    : 0;
   const outputEnd = new vscode.Position(lastLineIndex, lastLineLength);
   const outputRange = new vscode.Range(outputStart, outputEnd);
 
@@ -439,10 +445,16 @@ function findInput(editor: vscode.TextEditor): DocumentRanges | null {
   };
 
   // Assert that ranges cover entire document
-  console.assert(commandRange.start.line === 0 && commandRange.start.character === 0,
-    "Command range should start at document beginning");
-  console.assert(outputRange.end.line === document.lineCount - 1,
-    `Output range should end at document end: got line ${outputRange.end.line}, expected ${document.lineCount - 1}`);
+  console.assert(
+    commandRange.start.line === 0 && commandRange.start.character === 0,
+    "Command range should start at document beginning",
+  );
+  console.assert(
+    outputRange.end.line === document.lineCount - 1,
+    `Output range should end at document end: got line ${outputRange.end.line}, expected ${
+      document.lineCount - 1
+    }`,
+  );
 
   return ranges;
 }
@@ -487,7 +499,7 @@ async function doSync(editor: vscode.TextEditor) {
 
   // Extract command from command range
   const command = document.getText(ranges.command).trim();
-  
+
   // If command is empty, recreate document structure
   if (command === "") {
     const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
