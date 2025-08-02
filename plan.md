@@ -192,4 +192,7 @@ This will regenerate all snapshot files with the current test output.
   combined detection. All tests pass.
 - [X] Wire up regions computed in `model.ts` with actual syntax highlighting in `extension.ts`.
   Make sure to only use "common" tokens and scopes, such that highlighting works with builtin themes.
+- [ ] Implement syntax highlighting for the command. Extend ParsedCommand to include highlighting
+  ranges information. Highlight paths that do and do not exist. Highlight the executable. Highlight
+  quoted arguments ("like this"). 
 - [ ] Use file path ranges to implement goto definition for paths.
