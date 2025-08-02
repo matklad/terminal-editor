@@ -4,7 +4,6 @@ import * as vscode from "vscode";
 import {
   getTerminalForTesting,
   resetForTesting,
-  syncPending,
   TerminalSemanticTokensProvider,
   visibleTerminal,
   waitForSync,
@@ -574,7 +573,6 @@ suite("Run Command Tests", () => {
 
     // Run the second command
     await vscode.commands.executeCommand("terminal-editor.run");
-
     // Wait for completion
     await wait();
 

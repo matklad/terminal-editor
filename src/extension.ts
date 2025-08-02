@@ -8,8 +8,8 @@ import {
 
 interface DocumentRanges {
   command: vscode.Range;
-  status: vscode.Range;
-  output: vscode.Range;
+  status: vscode.Range| undefined;
+  output: vscode.Range | undefined;
 }
 
 let terminal: Terminal;
@@ -155,7 +155,7 @@ export class TerminalSemanticTokensProvider
     token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.SemanticTokens> {
     const ranges = findInput({ document } as vscode.TextEditor);
-    if (!ranges) {
+    if (!ranges.status || !ranges.output) {
       return new vscode.SemanticTokensBuilder(
         TerminalSemanticTokensProvider.legend,
       ).build();
@@ -360,15 +360,10 @@ export function visibleTerminal(): vscode.TextEditor | undefined {
   );
 }
 
-function findInput(editor: vscode.TextEditor): DocumentRanges | null {
+function findInput(editor: vscode.TextEditor): DocumentRanges{
   const document = editor.document;
   const text = document.getText();
   const lines = text.split("\n");
-
-  // Handle completely empty document
-  if (text.trim() === "") {
-    return null;
-  }
 
   // Find the first line that starts with '=' character
   let splitLine = lines.length;
@@ -379,9 +374,13 @@ function findInput(editor: vscode.TextEditor): DocumentRanges | null {
     }
   }
 
-  // If no status line found, consider this unparseable
+  // If no status line found, its just user input
   if (splitLine === lines.length) {
-    return null;
+    return {
+      command: new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)),
+      status: undefined,
+      output: undefined,
+    };
   }
 
   // The document structure is:
@@ -489,11 +488,10 @@ async function doSync(editor: vscode.TextEditor) {
   const ranges = findInput(editor);
 
   // If document is empty/unparseable, start with blank line as user input
-  if (!ranges) {
-    const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
+  if (!ranges.status) {
     const newContent = "\n\n" + terminal.status().text + "\n\n" +
       terminal.output().text;
-    await editor.edit((edit) => edit.replace(fullRange, newContent));
+    await editor.edit((edit) => edit.insert(ranges.command.end, newContent));
     return;
   }
 
