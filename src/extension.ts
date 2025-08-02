@@ -189,16 +189,6 @@ export class TerminalSemanticTokensProvider
     return builder.build();
   }
 
-  private getLineStartOffset(
-    document: vscode.TextDocument,
-    lineNumber: number,
-  ): number {
-    if (lineNumber >= document.lineCount) {
-      return document.getText().length;
-    }
-    return document.offsetAt(new vscode.Position(lineNumber, 0));
-  }
-
   private addTokensFromRanges(
     builder: vscode.SemanticTokensBuilder,
     document: vscode.TextDocument,
