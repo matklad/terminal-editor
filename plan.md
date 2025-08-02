@@ -190,6 +190,6 @@ This will regenerate all snapshot files with the current test output.
   (pattern: /\berror\s*:/gi). File paths are tagged as "path" with metadata, errors are tagged as
   "error". Added comprehensive tests covering single/multiple file paths, error messages, and
   combined detection. All tests pass.
-- [ ] Wire up regions computed in `model.ts` with actual syntax highlighting in `extension.ts`.
+- [X] Wire up regions computed in `model.ts` with actual syntax highlighting in `extension.ts`.
   Make sure to only use "common" tokens and scopes, such that highlighting works with builtin themes.
 - [ ] Use file path ranges to implement goto definition for paths.

@@ -6,6 +6,12 @@ import {
   TerminalSettings,
 } from "./model";
 
+interface DocumentRanges {
+  command: vscode.Range;
+  status: vscode.Range;
+  output: vscode.Range;
+}
+
 let terminal: Terminal;
 let syncRunning = false;
 export let syncPending = false;
@@ -148,7 +154,11 @@ export class TerminalSemanticTokensProvider
     document: vscode.TextDocument,
     token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.SemanticTokens> {
-    const { splitLine } = findInput({ document } as vscode.TextEditor);
+    const ranges = findInput({ document } as vscode.TextEditor);
+    if (!ranges) {
+      return new vscode.SemanticTokensBuilder(TerminalSemanticTokensProvider.legend).build();
+    }
+
     const statusResult = terminal.status();
     const outputResult = terminal.output();
 
@@ -156,8 +166,8 @@ export class TerminalSemanticTokensProvider
       TerminalSemanticTokensProvider.legend,
     );
 
-    // Add tokens for status line - status starts at splitLine (the line with "=")
-    const statusStartOffset = this.getLineStartOffset(document, splitLine);
+    // Add tokens for status line
+    const statusStartOffset = document.offsetAt(ranges.status.start);
     this.addTokensFromRanges(
       builder,
       document,
@@ -165,8 +175,8 @@ export class TerminalSemanticTokensProvider
       statusStartOffset,
     );
 
-    // Add tokens for output - output starts at splitLine + 2 (status + blank + output)
-    const outputStartOffset = this.getLineStartOffset(document, splitLine + 2);
+    // Add tokens for output
+    const outputStartOffset = document.offsetAt(ranges.output.start);
     this.addTokensFromRanges(
       builder,
       document,
@@ -348,16 +358,14 @@ export function visibleTerminal(): vscode.TextEditor | undefined {
   );
 }
 
-function findInput(
-  editor: vscode.TextEditor,
-): { command: string; splitLine: number } {
+function findInput(editor: vscode.TextEditor): DocumentRanges | null {
   const document = editor.document;
   const text = document.getText();
   const lines = text.split("\n");
 
-  // Handle completely empty input
+  // Handle completely empty document
   if (text.trim() === "") {
-    return { command: "", splitLine: 0 };
+    return null;
   }
 
   // Find the first line that starts with '=' character
@@ -369,11 +377,74 @@ function findInput(
     }
   }
 
-  // Extract user command (everything before the first non-user-input line)
-  const userLines = lines.slice(0, splitLine);
-  const command = userLines.join("\n").trim();
+  // If no status line found, consider this unparseable
+  if (splitLine === lines.length) {
+    return null;
+  }
 
-  return { command, splitLine };
+  // The document structure is:
+  // - Lines 0 to (splitLine-2): command text
+  // - Line (splitLine-1): blank line separating command from status  
+  // - Line splitLine: status line (starts with '=')
+  // - Line (splitLine+1): blank line separating status from output
+  // - Lines (splitLine+2) and beyond: output
+
+  // Command range: from start of document to just before the blank line before status
+  // The document structure should be:
+  // Line 0+: command text (may be multiple lines)
+  // Line X: blank line  
+  // Line X+1: status line (starts with '=')
+  // So command ends at the line before the blank line before status
+  
+  const commandStart = new vscode.Position(0, 0);
+  let commandEndLine: number;
+  let commandEndChar: number;
+  
+  if (splitLine <= 1) {
+    // If status is at line 0 or 1, there's no room for command text
+    commandEndLine = 0;
+    commandEndChar = 0;
+  } else {
+    // Command ends at the line before the blank line before status
+    // So if status is at line 2, blank line is at 1, command ends at line 0
+    commandEndLine = splitLine - 2;
+    commandEndChar = commandEndLine < lines.length ? lines[commandEndLine].length : 0;
+    
+    // Make sure we don't go negative
+    if (commandEndLine < 0) {
+      commandEndLine = 0;
+      commandEndChar = 0;
+    }
+  }
+  
+  const commandEnd = new vscode.Position(commandEndLine, commandEndChar);
+  const commandRange = new vscode.Range(commandStart, commandEnd);
+
+  // Status range: the line that starts with '='
+  const statusStart = new vscode.Position(splitLine, 0);
+  const statusEnd = new vscode.Position(splitLine, lines[splitLine].length);
+  const statusRange = new vscode.Range(statusStart, statusEnd);
+
+  // Output range: from two lines after status to end of document
+  const outputStart = new vscode.Position(splitLine + 2, 0);
+  const lastLineIndex = Math.max(0, document.lineCount - 1);
+  const lastLineLength = lastLineIndex < lines.length ? lines[lastLineIndex].length : 0;
+  const outputEnd = new vscode.Position(lastLineIndex, lastLineLength);
+  const outputRange = new vscode.Range(outputStart, outputEnd);
+
+  const ranges: DocumentRanges = {
+    command: commandRange,
+    status: statusRange,
+    output: outputRange,
+  };
+
+  // Assert that ranges cover entire document
+  console.assert(commandRange.start.line === 0 && commandRange.start.character === 0,
+    "Command range should start at document beginning");
+  console.assert(outputRange.end.line === document.lineCount - 1,
+    `Output range should end at document end: got line ${outputRange.end.line}, expected ${document.lineCount - 1}`);
+
+  return ranges;
 }
 
 async function sync(editor: vscode.TextEditor) {
@@ -403,9 +474,21 @@ async function sync(editor: vscode.TextEditor) {
 
 async function doSync(editor: vscode.TextEditor) {
   const document = editor.document;
-  const { command, splitLine } = findInput(editor);
+  const ranges = findInput(editor);
 
-  // If document is empty, start with blank line as user input
+  // If document is empty/unparseable, start with blank line as user input
+  if (!ranges) {
+    const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
+    const newContent = "\n\n" + terminal.status().text + "\n\n" +
+      terminal.output().text;
+    await editor.edit((edit) => edit.replace(fullRange, newContent));
+    return;
+  }
+
+  // Extract command from command range
+  const command = document.getText(ranges.command).trim();
+  
+  // If command is empty, recreate document structure
   if (command === "") {
     const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
     const newContent = "\n\n" + terminal.status().text + "\n\n" +
@@ -414,16 +497,21 @@ async function doSync(editor: vscode.TextEditor) {
     return;
   }
 
-  // Replace everything after user input
+  // Replace everything from the blank line before status to the end
+  // This preserves the command text and replaces status + output sections
   const statusResult = terminal.status();
   const outputResult = terminal.output();
   const newContent = "\n" + statusResult.text + "\n\n" + outputResult.text;
 
-  const range = new vscode.Range(
-    new vscode.Position(splitLine - 1, 0),
+  // Replace from the blank line before status to end of document
+  // This is equivalent to the original logic: splitLine - 1
+  const statusLineIndex = ranges.status.start.line;
+  const replaceStart = new vscode.Position(statusLineIndex - 1, 0);
+  const replaceRange = new vscode.Range(
+    replaceStart,
     document.positionAt(document.getText().length),
   );
-  await editor.edit((edit) => edit.replace(range, newContent));
+  await editor.edit((edit) => edit.replace(replaceRange, newContent));
 }
 
 async function reveal() {
@@ -465,8 +553,14 @@ async function run() {
     return;
   }
 
-  const { command } = findInput(editor);
-  if (!command.trim()) {
+  const ranges = findInput(editor);
+  if (!ranges) {
+    vscode.window.showErrorMessage("Terminal Editor: No command to run");
+    return;
+  }
+
+  const command = editor.document.getText(ranges.command).trim();
+  if (!command) {
     vscode.window.showErrorMessage("Terminal Editor: No command to run");
     return;
   }
