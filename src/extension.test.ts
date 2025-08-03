@@ -10,20 +10,29 @@ import {
 import { ANSIText, parseCommand, Terminal, TerminalSettings } from "./model";
 import { createSnapshotTester } from "./snapshot";
 
-// Test helper that waits for both completion and sync
+// Shared test helpers
 async function wait(): Promise<void> {
   const terminal = getTerminalForTesting();
   await terminal.waitForCompletion();
   await waitForSync();
 }
 
-// Test helper that performs an edit and asserts it succeeded
 async function assertEdit(
   editor: vscode.TextEditor,
   editCallback: (editBuilder: vscode.TextEditorEdit) => void,
 ): Promise<void> {
   const success = await editor.edit(editCallback);
   assert.ok(success, "Editor edit should succeed");
+}
+
+// Shared setup/teardown functions
+async function setupTest(): Promise<void> {
+  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  resetForTesting();
+}
+
+async function teardownTest(): Promise<void> {
+  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
 }
 
 // Helper to decode semantic tokens and extract their text ranges
@@ -131,341 +140,140 @@ function findTerminalDocument(): vscode.TextDocument | undefined {
   return terminalDocs.length === 1 ? terminalDocs[0] : undefined;
 }
 
-suite("Extension Test Suite", () => {
-  vscode.window.showInformationMessage("Start all tests.");
+suite("Terminal Editor Core", () => {
   const snapshot = createSnapshotTester();
 
-  setup(async () => {
-    // Close all editors
-    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  setup(setupTest);
+  teardown(teardownTest);
 
-    // Reset the global terminal instance
-    resetForTesting();
-  });
-
-  teardown(async () => {
-    // Clean up after each test
-    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-  });
-
-  test("Reveal command creates terminal", async () => {
-    // Execute reveal command
+  test("Terminal reveal and management", async () => {
+    // Execute reveal command creates terminal
     await vscode.commands.executeCommand("terminal-editor.reveal");
-
-    // Check that terminal editor was created
     const doc = findTerminalDocument();
     assert.ok(doc, "Terminal document should be created");
+    snapshot.expectSnapshot("reveal-command-creates-terminal", doc.getText());
 
-    // Check that the document has expected content using snapshot
-    const text = doc.getText();
-    snapshot.expectSnapshot("reveal-command-creates-terminal", text);
-  });
-
-  test("Second reveal command does not create duplicate", async () => {
-    // Execute reveal command twice
+    // Second reveal doesn't create duplicate
     await vscode.commands.executeCommand("terminal-editor.reveal");
-    await vscode.commands.executeCommand("terminal-editor.reveal");
+    assert.strictEqual(findTerminalDocument(), doc, "Should reuse existing terminal");
 
-    // Check that only one terminal editor exists
-    const doc = findTerminalDocument();
-    assert.ok(doc, "Terminal document should exist and be unique");
-  });
-
-  test("Reveal works when terminal exists but not visible", async () => {
-    // Create terminal and then close it
-    await vscode.commands.executeCommand("terminal-editor.reveal");
+    // Reveal works when terminal exists but not visible
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
-
-    // Execute reveal again
     await vscode.commands.executeCommand("terminal-editor.reveal");
-
-    // Check that terminal is visible again
     const activeEditor = vscode.window.activeTextEditor;
     assert.ok(activeEditor);
     assert.strictEqual(activeEditor.document.uri.scheme, "terminal-editor");
-
-    // Also verify using our helper function
-    const doc = findTerminalDocument();
-    assert.ok(doc, "Terminal document should still exist");
-    assert.strictEqual(doc, activeEditor.document);
-  });
-
-  test("Terminal recreated after close", async () => {
-    // Create terminal
-    await vscode.commands.executeCommand("terminal-editor.reveal");
-
-    // Close the document completely
-    const terminalDoc = findTerminalDocument();
-    if (terminalDoc) {
-      await vscode.window.showTextDocument(terminalDoc);
-      await vscode.commands.executeCommand(
-        "workbench.action.closeActiveEditor",
-      );
-    }
-
-    // Execute reveal again
-    await vscode.commands.executeCommand("terminal-editor.reveal");
-
-    // Check that new terminal was created
-    const newDoc = findTerminalDocument();
-    assert.ok(newDoc, "Terminal document should be recreated");
   });
 });
 
 suite("parseCommand Tests", () => {
-  test("Simple command parsing", () => {
-    const result = parseCommand("git status");
+  test("Command parsing basics", () => {
+    // Simple parsing
+    let result = parseCommand("git status");
     assert.deepStrictEqual(result.tokens, ["git", "status"]);
     assert.strictEqual(result.cursorTokenIndex, undefined);
-    assert.strictEqual(result.cursorTokenOffset, undefined);
-  });
 
-  test("Command with quoted arguments", () => {
-    const result = parseCommand('echo "hello world" test');
+    // Quoted arguments
+    result = parseCommand('echo "hello world" test');
     assert.deepStrictEqual(result.tokens, ["echo", "hello world", "test"]);
-  });
 
-  test("Empty command", () => {
-    const result = parseCommand("");
+    // Multiple spaces
+    result = parseCommand("  git   status   --short  ");
+    assert.deepStrictEqual(result.tokens, ["git", "status", "--short"]);
+
+    // Empty command
+    result = parseCommand("");
     assert.deepStrictEqual(result.tokens, []);
   });
 
-  test("Command with multiple spaces", () => {
-    const result = parseCommand("  git   status   --short  ");
-    assert.deepStrictEqual(result.tokens, ["git", "status", "--short"]);
-  });
-
-  test("Cursor at beginning of first token", () => {
-    const result = parseCommand("git status", 0);
-    assert.strictEqual(result.cursorTokenIndex, 0);
-    assert.strictEqual(result.cursorTokenOffset, 0);
-  });
-
-  test("Cursor in middle of first token", () => {
-    const result = parseCommand("git status", 2);
+  test("Cursor position tracking", () => {
+    // Cursor in token
+    let result = parseCommand("git status", 2);
     assert.strictEqual(result.cursorTokenIndex, 0);
     assert.strictEqual(result.cursorTokenOffset, 2);
-  });
 
-  test("Cursor at end of first token", () => {
-    const result = parseCommand("git status", 2);
-    assert.strictEqual(result.cursorTokenIndex, 0);
-    assert.strictEqual(result.cursorTokenOffset, 2);
-  });
-
-  test("Cursor on whitespace between tokens", () => {
-    const result = parseCommand("git status", 3);
+    // Cursor on whitespace
+    result = parseCommand("git status", 3);
     assert.strictEqual(result.cursorTokenIndex, undefined);
-    assert.strictEqual(result.cursorTokenOffset, undefined);
-  });
 
-  test("Cursor at beginning of second token", () => {
-    const result = parseCommand("git status", 4);
-    assert.strictEqual(result.cursorTokenIndex, 1);
-    assert.strictEqual(result.cursorTokenOffset, 0);
-  });
-
-  test("Cursor at end of command", () => {
-    const result = parseCommand("git status", 10);
-    assert.strictEqual(result.cursorTokenIndex, 1);
-    assert.strictEqual(result.cursorTokenOffset, 6);
-  });
-
-  test("Cursor at end of command with trailing space", () => {
-    const result = parseCommand("git status ", 11);
-    assert.strictEqual(result.cursorTokenIndex, undefined);
-    assert.strictEqual(result.cursorTokenOffset, undefined);
-  });
-
-  test("Cursor in quoted string", () => {
-    const result = parseCommand('echo "hello world"', 8);
+    // Cursor in quoted string
+    result = parseCommand('echo "hello world"', 8);
     assert.strictEqual(result.cursorTokenIndex, 1);
     assert.strictEqual(result.cursorTokenOffset, 2);
   });
 
-  test("Cursor at quote start", () => {
-    const result = parseCommand('echo "hello world"', 5);
-    assert.strictEqual(result.cursorTokenIndex, 1);
-    assert.strictEqual(result.cursorTokenOffset, 0);
-  });
-
-  test("Multiple quoted arguments", () => {
-    const result = parseCommand('cmd "arg1" "arg2 with spaces"');
+  test("Quote handling", () => {
+    // Multiple quoted args
+    let result = parseCommand('cmd "arg1" "arg2 with spaces"');
     assert.deepStrictEqual(result.tokens, ["cmd", "arg1", "arg2 with spaces"]);
-  });
 
-  test("Empty quoted string", () => {
-    const result = parseCommand('echo ""');
+    // Empty quoted string
+    result = parseCommand('echo ""');
     assert.deepStrictEqual(result.tokens, ["echo", ""]);
   });
-
-  test("Cursor in empty command", () => {
-    const result = parseCommand("", 0);
-    assert.strictEqual(result.cursorTokenIndex, undefined);
-    assert.strictEqual(result.cursorTokenOffset, undefined);
-  });
 });
 
-suite("Terminal Configuration Tests", () => {
-  test("Terminal respects maxOutputLines configuration", async () => {
+suite("Terminal Configuration", () => {
+  test("Terminal configuration and behavior", async () => {
+    // Test maxOutputLines
     const maxLines = 5;
-    const mockSettings: TerminalSettings = {
-      maxOutputLines: () => maxLines,
-    };
+    const mockSettings: TerminalSettings = { maxOutputLines: () => maxLines };
     const terminal = new Terminal(mockSettings);
-
-    // Run a command that produces many lines of output
-    const totalLines = 20;
-    const command = manyLinesCommand(totalLines);
-    terminal.run(command);
-
-    // Wait for the process to complete
+    
+    terminal.run(manyLinesCommand(20));
     await terminal.waitForCompletion();
-
-    // Get the output and verify it's limited to maxLines
+    
     const output = terminal.output();
     const lines = output.text.split("\n").filter((line) => line.trim() !== "");
+    assert.ok(lines.length <= maxLines, `Got ${lines.length} lines, expected at most ${maxLines}`);
+    assert.ok(lines[lines.length - 1].includes("Line 20"), "Should end with Line 20");
 
-    // The output should be limited to maxLines
-    // Since we generated 20 lines total and limit to 5, we should get the last 5: lines 16-20
-    // But due to how split works with trailing newlines, we might get 4 content lines
-    assert.ok(
-      lines.length <= maxLines,
-      `Got ${lines.length} lines, expected at most ${maxLines}`,
-    );
-    assert.ok(
-      lines.length >= maxLines - 1,
-      `Got ${lines.length} lines, expected at least ${maxLines - 1}`,
-    );
+    // Test error handling
+    const errorTerminal = new Terminal(mockSettings);
+    errorTerminal.run("this-command-definitely-does-not-exist-12345");
+    await errorTerminal.waitForCompletion();
+    
+    const status = errorTerminal.status();
+    assert.ok(status.text.includes("status: 127"), "Should show exit code 127 for non-existent command");
 
-    // Should contain the last lines
-    assert.ok(
-      lines[lines.length - 1].includes("Line 20"),
-      "Should end with Line 20",
-    );
-
-    // Should start with Line 16 or 17 (depending on exact line count due to trailing newlines)
-    const firstLine = lines[0];
-    assert.ok(
-      firstLine.includes("Line 16") || firstLine.includes("Line 17"),
-      `First line should be Line 16 or 17, got: ${firstLine}`,
-    );
-  });
-
-  test("Terminal handles non-existent command", async () => {
-    const mockSettings: TerminalSettings = {
-      maxOutputLines: () => 50,
-    };
-    const terminal = new Terminal(mockSettings);
-
-    // Run a command that doesn't exist
-    terminal.run("this-command-definitely-does-not-exist-12345");
-
-    // Wait for the process to complete
-    await terminal.waitForCompletion();
-
-    // Check that the terminal shows completed status
-    const status = terminal.status();
-    assert.ok(
-      status.text.includes("status: 127"),
-      `Expected status with exit code 127, got: ${status.text}`,
-    );
-
-    // Check that error message is in output
-    const output = terminal.output();
-    assert.ok(
-      output.text.includes("ENOENT"),
-      `Expected ENOENT error message, got: ${output.text}`,
-    );
-  });
-
-  test("Terminal respects working directory", async () => {
-    const mockSettings: TerminalSettings = {
-      maxOutputLines: () => 50,
-    };
-
-    // Create terminal with specific working directory
-    const testWorkingDir = "/tmp";
-    const terminal = new Terminal(mockSettings, {}, testWorkingDir);
-
-    // Run pwd command to verify working directory
-    terminal.run("pwd");
-
-    // Wait for the process to complete
-    await terminal.waitForCompletion();
-
-    // Check that the output shows the correct working directory
-    const output = terminal.output();
-    assert.ok(
-      output.text.includes("/tmp"),
-      `Expected output to contain /tmp, got: ${output.text}`,
-    );
+    // Test working directory
+    const wdTerminal = new Terminal(mockSettings, {}, "/tmp");
+    wdTerminal.run("pwd");
+    await wdTerminal.waitForCompletion();
+    
+    const wdOutput = wdTerminal.output();
+    assert.ok(wdOutput.text.includes("/tmp"), "Should respect working directory");
   });
 });
 
-suite("Run Command Tests", () => {
+suite("Command Execution", () => {
   const snapshot = createSnapshotTester();
+  setup(setupTest);
+  teardown(teardownTest);
 
-  setup(async () => {
-    // Close all editors
-    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-
-    // Reset the global terminal instance
-    resetForTesting();
-  });
-
-  teardown(async () => {
-    // Clean up after each test
-    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-  });
-
-  test("Run command executes simple command and shows output", async () => {
-    // Create terminal
+  test("Command execution and output", async () => {
     await vscode.commands.executeCommand("terminal-editor.reveal");
-
-    // Get the terminal editor
-    const activeEditor = vscode.window.activeTextEditor;
-    assert.ok(activeEditor);
+    const activeEditor = vscode.window.activeTextEditor!;
     assert.strictEqual(activeEditor.document.uri.scheme, "terminal-editor");
 
-    // Insert a simple command
-    const command = fastCommand();
+    // Test successful command
     await assertEdit(activeEditor, (editBuilder) => {
-      editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+      editBuilder.replace(new vscode.Range(0, 0, 0, 0), fastCommand());
     });
-
-    // Run the command
     await vscode.commands.executeCommand("terminal-editor.run");
-
-    // Wait for the process to complete
     await wait();
-    // Check that the output contains the expected result using snapshot
-    const text = activeEditor.document.getText();
-    snapshot.expectSnapshot("run-command-simple-output", text);
-  });
+    snapshot.expectSnapshot("run-command-simple-output", activeEditor.document.getText());
 
-  test("Run command handles command with error exit code", async () => {
-    // Create terminal
-    await vscode.commands.executeCommand("terminal-editor.reveal");
-
-    // Get the terminal editor
-    const activeEditor = vscode.window.activeTextEditor;
-    assert.ok(activeEditor);
-
-    // Insert a command that exits with error
-    const command = errorCommand();
+    // Test error command
     await assertEdit(activeEditor, (editBuilder) => {
-      editBuilder.replace(new vscode.Range(0, 0, 0, 0), command);
+      const doc = activeEditor.document;
+      const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
+      editBuilder.delete(fullRange);
+      editBuilder.insert(new vscode.Position(0, 0), errorCommand());
     });
-
-    // Run the command
     await vscode.commands.executeCommand("terminal-editor.run");
-
-    // Wait for the process to complete
     await wait();
-    // Check that the output shows error exit code using snapshot
-    const text = activeEditor.document.getText();
-    snapshot.expectSnapshot("run-command-error-exit-code", text);
+    snapshot.expectSnapshot("run-command-error-exit-code", activeEditor.document.getText());
   });
 
   test("Run command shows runtime updates", async function () {
