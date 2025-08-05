@@ -139,7 +139,7 @@ export class TerminalSemanticTokensProvider
   implements vscode.DocumentSemanticTokensProvider {
   private static readonly legend = new vscode.SemanticTokensLegend([
     "keyword",
-    "operator", 
+    "operator",
     "string",
     "number",
     "property",
@@ -240,7 +240,7 @@ export class TerminalSemanticTokensProvider
         return 8; // decorator (underlined text)
       case "ansi_red":
         return 4; // property (red text)
-      case "ansi_green": 
+      case "ansi_green":
         return 2; // string (green text)
       case "ansi_yellow":
         return 3; // number (yellow text)
@@ -249,7 +249,7 @@ export class TerminalSemanticTokensProvider
       case "ansi_magenta":
         return 7; // type (magenta text)
       case "ansi_cyan":
-        return 2; // string (cyan text) 
+        return 2; // string (cyan text)
       case "ansi_white":
         return 5; // variable (white text)
       default:
@@ -605,17 +605,7 @@ async function dwim() {
   const editor = visibleTerminal();
 
   if (editor) {
-    // Terminal is revealed, check if it's focused
-    if (vscode.window.activeTextEditor === editor) {
-      // Terminal is focused, run the current command
-      await run();
-    } else {
-      // Terminal is visible but not focused, focus it
-      await vscode.window.showTextDocument(
-        editor.document,
-        vscode.ViewColumn.Two,
-      );
-    }
+    await run();
   } else {
     // Terminal is not revealed, reveal it
     await reveal();
