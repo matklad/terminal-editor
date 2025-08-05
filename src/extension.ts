@@ -103,6 +103,14 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
+  const definitionProvider = new FilePathDefinitionProvider();
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(
+      { scheme: "terminal-editor" },
+      definitionProvider,
+    ),
+  );
+
   const revealCommand = vscode.commands.registerCommand(
     "terminal-editor.reveal",
     reveal,
@@ -134,6 +142,42 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
+
+class FilePathDefinitionProvider implements vscode.DefinitionProvider {
+  private readonly filePathRegex = /([a-zA-Z0-9_\-\/\.]+\.(?:zig|rs|ts|js|py|c|cpp|h|hpp|java|go|rb|php|cs|swift|kt|scala|clj|ml|hs|elm|dart|lua|r|jl|nim|cr|ex|exs|erl|hrl|f90|f95|pas|pl|sh|bat|ps1|vim|tex|md|rst|org|adoc|json|yaml|yml|toml|ini|cfg|conf|xml|html|css|scss|sass|less|sql|proto|thrift|avro|graphql|dockerfile|makefile|cmake|gradle|sbt|cabal|mix|cargo|poetry|pipfile|requirements|setup|package|bower|composer|npm|yarn|pom)):(\d+):(\d+)/g;
+
+  provideDefinition(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken,
+  ): vscode.ProviderResult<vscode.Definition> {
+    const line = document.lineAt(position.line);
+    const text = line.text;
+
+    this.filePathRegex.lastIndex = 0;
+    let match;
+    while ((match = this.filePathRegex.exec(text)) !== null) {
+      const [fullMatch, filePath, lineNum, colNum] = match;
+      const matchStart = match.index;
+      const matchEnd = match.index + fullMatch.length;
+
+      if (position.character >= matchStart && position.character <= matchEnd) {
+        const workspaceRoot = getWorkspaceRoot();
+        const fullPath = vscode.Uri.file(
+          filePath.startsWith('/') ? filePath : `${workspaceRoot}/${filePath}`
+        );
+        
+        const targetLine = Math.max(0, parseInt(lineNum, 10) - 1);
+        const targetCol = Math.max(0, parseInt(colNum, 10) - 1);
+        const targetPosition = new vscode.Position(targetLine, targetCol);
+        
+        return new vscode.Location(fullPath, targetPosition);
+      }
+    }
+
+    return null;
+  }
+}
 
 export class TerminalSemanticTokensProvider
   implements vscode.DocumentSemanticTokensProvider {
