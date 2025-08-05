@@ -937,7 +937,9 @@ suite("Syntax Highlighting Tests", () => {
 
     // Create fake process with multiple file paths
     const mockStdout = new ANSIText();
-    mockStdout.append("src/main.rs:10:5: first error\nlib/utils.ts:42:12: second error\n");
+    mockStdout.append(
+      "src/main.rs:10:5: first error\nlib/utils.ts:42:12: second error\n",
+    );
     const mockStderr = new ANSIText();
     const mockProcess = {
       process: {} as any,
@@ -977,7 +979,9 @@ suite("Syntax Highlighting Tests", () => {
     // Create fake process with error messages
     const mockStdout = new ANSIText();
     const mockStderr = new ANSIText();
-    mockStderr.append("src/main.rs:10:5: error: unused variable\nWarning: something\nError: another issue\nERROR: caps error\n");
+    mockStderr.append(
+      "src/main.rs:10:5: error: unused variable\nWarning: something\nError: another issue\nERROR: caps error\n",
+    );
     const mockProcess = {
       process: {} as any,
       startTime: new Date(),
@@ -1018,7 +1022,9 @@ suite("Syntax Highlighting Tests", () => {
     // Create fake process with both file paths and error messages
     const mockStdout = new ANSIText();
     const mockStderr = new ANSIText();
-    mockStderr.append("src/tigerbeetle/main.zig:440:27: error: root source file struct 'stdx' has no member named 'unique_u18'\n");
+    mockStderr.append(
+      "src/tigerbeetle/main.zig:440:27: error: root source file struct 'stdx' has no member named 'unique_u18'\n",
+    );
     const mockProcess = {
       process: {} as any,
       startTime: new Date(),
@@ -1095,15 +1101,15 @@ suite("Syntax Highlighting Tests", () => {
 
   test("ANSIText handles line drawing characters", () => {
     const ansiText = new ANSIText();
-    
+
     // Test DEC Special Character Set escape sequences
     ansiText.append("\x1b(0tq x mq\x1b(B normal text");
-    
+
     const result = ansiText.getTextWithRanges();
-    
+
     // Should convert line drawing characters to Unicode
     assert.strictEqual(result.text, "├─ │ └─ normal text");
-    
+
     // Raw input should still contain original escape sequences
     assert.ok(ansiText.getRawInput().includes("\x1b(0"));
     assert.ok(ansiText.getRawInput().includes("\x1b(B"));
@@ -1111,28 +1117,30 @@ suite("Syntax Highlighting Tests", () => {
 
   test("ANSIText handles combined ANSI colors and line drawing", () => {
     const ansiText = new ANSIText();
-    
+
     // Test combination of colors and line drawing (like in zig build output)
-    ansiText.append("\x1b[2mcheck\n\x1b(0tq\x1b(B zig build-exe \x1b[31m1 errors\x1b[0m\n");
+    ansiText.append(
+      "\x1b[2mcheck\n\x1b(0tq\x1b(B zig build-exe \x1b[31m1 errors\x1b[0m\n",
+    );
     ansiText.append("src/main.zig:10:5: \x1b[31merror:\x1b[0m message");
-    
+
     const result = ansiText.getTextWithRanges();
-    
+
     // Should have properly converted line drawing chars
     assert.ok(result.text.includes("├─"));
-    
+
     // Should detect ANSI color ranges
-    const dimRanges = result.ranges.filter(r => r.tag === "ansi_dim");
-    const redRanges = result.ranges.filter(r => r.tag === "ansi_red");
+    const dimRanges = result.ranges.filter((r) => r.tag === "ansi_dim");
+    const redRanges = result.ranges.filter((r) => r.tag === "ansi_red");
     assert.ok(dimRanges.length > 0, "Should detect dim text");
     assert.ok(redRanges.length > 0, "Should detect red text");
-    
+
     // Should still detect file paths and errors within colored text
-    const pathRanges = result.ranges.filter(r => r.tag === "path");
-    const errorRanges = result.ranges.filter(r => r.tag === "error");
+    const pathRanges = result.ranges.filter((r) => r.tag === "path");
+    const errorRanges = result.ranges.filter((r) => r.tag === "error");
     assert.strictEqual(pathRanges.length, 1, "Should detect file path");
     assert.strictEqual(errorRanges.length, 1, "Should detect error message");
-    
+
     const pathRange = pathRanges[0];
     assert.strictEqual(pathRange.file, "src/main.zig");
     assert.strictEqual(pathRange.line, 10);

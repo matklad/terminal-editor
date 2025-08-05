@@ -178,21 +178,21 @@ export class Terminal {
     // Combine stdout and stderr text and ranges
     const stdoutResult = this.currentProcess.stdout.getTextWithRanges();
     const stderrResult = this.currentProcess.stderr.getTextWithRanges();
-    
+
     const combinedText = stdoutResult.text + stderrResult.text;
-    
+
     // Adjust stderr ranges to account for stdout text length
-    const adjustedStderrRanges = stderrResult.ranges.map(range => ({
+    const adjustedStderrRanges = stderrResult.ranges.map((range) => ({
       ...range,
       start: range.start + stdoutResult.text.length,
       end: range.end + stdoutResult.text.length,
     }));
-    
+
     const combinedRanges = [...stdoutResult.ranges, ...adjustedStderrRanges];
 
     let text: string;
     let ranges: HighlightRange[];
-    
+
     // In full mode, return all output
     if (!this.folded) {
       text = combinedText;
@@ -207,7 +207,7 @@ export class Terminal {
       } else {
         const limitedLines = lines.slice(-maxLines);
         text = limitedLines.join("\n");
-        
+
         // Calculate the character offset where truncation begins
         const fullLines = combinedText.split("\n");
         const truncatedLines = fullLines.length - maxLines;
@@ -215,11 +215,11 @@ export class Terminal {
         for (let i = 0; i < truncatedLines; i++) {
           truncationOffset += fullLines[i].length + 1; // +1 for newline
         }
-        
+
         // Filter and adjust ranges that fall within the truncated text
         ranges = combinedRanges
-          .filter(range => range.start >= truncationOffset)
-          .map(range => ({
+          .filter((range) => range.start >= truncationOffset)
+          .map((range) => ({
             ...range,
             start: range.start - truncationOffset,
             end: range.end - truncationOffset,
@@ -560,7 +560,7 @@ export class ANSIText {
   getTextWithRanges(): TextWithRanges {
     return {
       text: this.resultingText,
-      ranges: [...this.ranges]
+      ranges: [...this.ranges],
     };
   }
 
@@ -593,16 +593,22 @@ export class ANSIText {
 
       if (match[1] !== undefined) {
         // Color escape sequence \x1b[...m
-        const codes = match[1].split(';').map(code => parseInt(code, 10));
+        const codes = match[1].split(";").map((code) => parseInt(code, 10));
         for (const code of codes) {
-          this.processANSICode(code, currentStyles, styleStartPositions, currentPos, ansiRanges);
+          this.processANSICode(
+            code,
+            currentStyles,
+            styleStartPositions,
+            currentPos,
+            ansiRanges,
+          );
         }
       } else if (match[2] !== undefined) {
         // Character set escape sequence \x1b(...
         const charset = match[2];
-        if (charset === '0') {
+        if (charset === "0") {
           inLineDrawingMode = true; // Enter DEC Special Character Set
-        } else if (charset === 'B') {
+        } else if (charset === "B") {
           inLineDrawingMode = false; // Return to ASCII
         }
       }
@@ -625,7 +631,7 @@ export class ANSIText {
         ansiRanges.push({
           start: startPos,
           end: currentPos,
-          tag: this.styleToTag(style)
+          tag: this.styleToTag(style),
         });
       }
     }
@@ -643,18 +649,30 @@ export class ANSIText {
     // Convert DEC Special Character Set to Unicode equivalents
     return text.replace(/./g, (char) => {
       switch (char) {
-        case 'q': return '─'; // horizontal line
-        case 'x': return '│'; // vertical line  
-        case 'l': return '┌'; // top-left corner
-        case 'k': return '┐'; // top-right corner
-        case 'm': return '└'; // bottom-left corner
-        case 'j': return '┘'; // bottom-right corner
-        case 't': return '├'; // tee pointing right
-        case 'u': return '┤'; // tee pointing left
-        case 'v': return '┴'; // tee pointing up
-        case 'w': return '┬'; // tee pointing down
-        case 'n': return '┼'; // cross
-        default: return char; // keep other characters as-is
+        case "q":
+          return "─"; // horizontal line
+        case "x":
+          return "│"; // vertical line
+        case "l":
+          return "┌"; // top-left corner
+        case "k":
+          return "┐"; // top-right corner
+        case "m":
+          return "└"; // bottom-left corner
+        case "j":
+          return "┘"; // bottom-right corner
+        case "t":
+          return "├"; // tee pointing right
+        case "u":
+          return "┤"; // tee pointing left
+        case "v":
+          return "┴"; // tee pointing up
+        case "w":
+          return "┬"; // tee pointing down
+        case "n":
+          return "┼"; // cross
+        default:
+          return char; // keep other characters as-is
       }
     });
   }
@@ -664,7 +682,7 @@ export class ANSIText {
     currentStyles: Set<string>,
     styleStartPositions: Map<string, number>,
     currentPos: number,
-    ansiRanges: HighlightRange[]
+    ansiRanges: HighlightRange[],
   ): void {
     // Close existing ranges when style changes
     const closeStyle = (style: string) => {
@@ -674,7 +692,7 @@ export class ANSIText {
           ansiRanges.push({
             start: startPos,
             end: currentPos,
-            tag: this.styleToTag(style)
+            tag: this.styleToTag(style),
           });
         }
         styleStartPositions.delete(style);
@@ -713,38 +731,83 @@ export class ANSIText {
         break;
       case 30: // Black (foreground)
         // Close existing color styles
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         break;
       case 31: // Red
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         openStyle("red");
         break;
       case 32: // Green
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         openStyle("green");
         break;
       case 33: // Yellow
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         openStyle("yellow");
         break;
       case 34: // Blue
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         openStyle("blue");
         break;
       case 35: // Magenta
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         openStyle("magenta");
         break;
       case 36: // Cyan
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         openStyle("cyan");
         break;
       case 37: // White
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         openStyle("white");
         break;
       case 39: // Default foreground color
-        this.closeColorStyles(currentStyles, styleStartPositions, currentPos, ansiRanges);
+        this.closeColorStyles(
+          currentStyles,
+          styleStartPositions,
+          currentPos,
+          ansiRanges,
+        );
         break;
     }
   }
@@ -753,9 +816,17 @@ export class ANSIText {
     currentStyles: Set<string>,
     styleStartPositions: Map<string, number>,
     currentPos: number,
-    ansiRanges: HighlightRange[]
+    ansiRanges: HighlightRange[],
   ): void {
-    const colorStyles = ["red", "green", "yellow", "blue", "magenta", "cyan", "white"];
+    const colorStyles = [
+      "red",
+      "green",
+      "yellow",
+      "blue",
+      "magenta",
+      "cyan",
+      "white",
+    ];
     for (const color of colorStyles) {
       if (styleStartPositions.has(color)) {
         const startPos = styleStartPositions.get(color)!;
@@ -763,7 +834,7 @@ export class ANSIText {
           ansiRanges.push({
             start: startPos,
             end: currentPos,
-            tag: this.styleToTag(color)
+            tag: this.styleToTag(color),
           });
         }
         styleStartPositions.delete(color);
@@ -774,17 +845,28 @@ export class ANSIText {
 
   private styleToTag(style: string): HighlightRange["tag"] {
     switch (style) {
-      case "dim": return "ansi_dim";
-      case "bold": return "ansi_bold";
-      case "underline": return "ansi_underline";
-      case "red": return "ansi_red";
-      case "green": return "ansi_green";
-      case "yellow": return "ansi_yellow";
-      case "blue": return "ansi_blue";
-      case "magenta": return "ansi_magenta";
-      case "cyan": return "ansi_cyan";
-      case "white": return "ansi_white";
-      default: return "ansi_dim"; // fallback
+      case "dim":
+        return "ansi_dim";
+      case "bold":
+        return "ansi_bold";
+      case "underline":
+        return "ansi_underline";
+      case "red":
+        return "ansi_red";
+      case "green":
+        return "ansi_green";
+      case "yellow":
+        return "ansi_yellow";
+      case "blue":
+        return "ansi_blue";
+      case "magenta":
+        return "ansi_magenta";
+      case "cyan":
+        return "ansi_cyan";
+      case "white":
+        return "ansi_white";
+      default:
+        return "ansi_dim"; // fallback
     }
   }
 

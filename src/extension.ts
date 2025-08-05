@@ -144,7 +144,8 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {}
 
 class FilePathDefinitionProvider implements vscode.DefinitionProvider {
-  private readonly filePathRegex = /([a-zA-Z0-9_\-\/\.]+\.(?:zig|rs|ts|js|py|c|cpp|h|hpp|java|go|rb|php|cs|swift|kt|scala|clj|ml|hs|elm|dart|lua|r|jl|nim|cr|ex|exs|erl|hrl|f90|f95|pas|pl|sh|bat|ps1|vim|tex|md|rst|org|adoc|json|yaml|yml|toml|ini|cfg|conf|xml|html|css|scss|sass|less|sql|proto|thrift|avro|graphql|dockerfile|makefile|cmake|gradle|sbt|cabal|mix|cargo|poetry|pipfile|requirements|setup|package|bower|composer|npm|yarn|pom)):(\d+):(\d+)/g;
+  private readonly filePathRegex =
+    /([a-zA-Z0-9_\-\/\.]+\.(?:zig|rs|ts|js|py|c|cpp|h|hpp|java|go|rb|php|cs|swift|kt|scala|clj|ml|hs|elm|dart|lua|r|jl|nim|cr|ex|exs|erl|hrl|f90|f95|pas|pl|sh|bat|ps1|vim|tex|md|rst|org|adoc|json|yaml|yml|toml|ini|cfg|conf|xml|html|css|scss|sass|less|sql|proto|thrift|avro|graphql|dockerfile|makefile|cmake|gradle|sbt|cabal|mix|cargo|poetry|pipfile|requirements|setup|package|bower|composer|npm|yarn|pom)):(\d+):(\d+)/g;
 
   provideDefinition(
     document: vscode.TextDocument,
@@ -164,13 +165,13 @@ class FilePathDefinitionProvider implements vscode.DefinitionProvider {
       if (position.character >= matchStart && position.character <= matchEnd) {
         const workspaceRoot = getWorkspaceRoot();
         const fullPath = vscode.Uri.file(
-          filePath.startsWith('/') ? filePath : `${workspaceRoot}/${filePath}`
+          filePath.startsWith("/") ? filePath : `${workspaceRoot}/${filePath}`,
         );
-        
+
         const targetLine = Math.max(0, parseInt(lineNum, 10) - 1);
         const targetCol = Math.max(0, parseInt(colNum, 10) - 1);
         const targetPosition = new vscode.Position(targetLine, targetCol);
-        
+
         return new vscode.Location(fullPath, targetPosition);
       }
     }
@@ -274,8 +275,9 @@ export class TerminalSemanticTokensProvider
       case "path":
         return 2; // string
       case "error":
-        return 4; // property
+        return 4;
       // ANSI color and style mappings using VSCode builtin token types
+      // property
       case "ansi_dim":
         return 6; // comment (dim/faded text)
       case "ansi_bold":
