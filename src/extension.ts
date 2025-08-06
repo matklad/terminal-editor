@@ -94,14 +94,29 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  const semanticTokensProvider = new TerminalSemanticTokensProvider();
+  const ansiDecorationProvider = new AnsiDecorationProvider();
+  context.subscriptions.push(ansiDecorationProvider);
+  
+  // Update decorations when editor changes
+  const updateActiveEditor = () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.uri.scheme === 'terminal-editor') {
+      ansiDecorationProvider.updateDecorations(editor);
+    }
+  };
+  
+  // Set up event listeners for decoration updates
   context.subscriptions.push(
-    vscode.languages.registerDocumentSemanticTokensProvider(
-      { scheme: "terminal-editor" },
-      semanticTokensProvider,
-      TerminalSemanticTokensProvider.getLegend(),
-    ),
+    vscode.window.onDidChangeActiveTextEditor(updateActiveEditor),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      if (event.document.uri.scheme === 'terminal-editor') {
+        updateActiveEditor();
+      }
+    })
   );
+  
+  // Initial decoration update
+  updateActiveEditor();
 
   const definitionProvider = new FilePathDefinitionProvider();
   context.subscriptions.push(
@@ -180,129 +195,106 @@ class FilePathDefinitionProvider implements vscode.DefinitionProvider {
   }
 }
 
-export class TerminalSemanticTokensProvider
-  implements vscode.DocumentSemanticTokensProvider {
-  private static readonly legend = new vscode.SemanticTokensLegend([
-    "keyword",
-    "operator",
-    "string",
-    "number",
-    "property",
-    "variable",
-    "comment",
-    "type",
-    "decorator",
-    "regexp",
-  ]);
-
-  static getLegend(): vscode.SemanticTokensLegend {
-    return TerminalSemanticTokensProvider.legend;
+export class AnsiDecorationProvider {
+  private decorationTypes = new Map<string, vscode.TextEditorDecorationType>();
+  
+  // Map ANSI colors to VS Code terminal theme colors
+  private ansiColorMap: Record<string, vscode.ThemeColor> = {
+    ansi_red: new vscode.ThemeColor('terminal.ansiRed'),
+    ansi_green: new vscode.ThemeColor('terminal.ansiGreen'),
+    ansi_yellow: new vscode.ThemeColor('terminal.ansiYellow'),
+    ansi_blue: new vscode.ThemeColor('terminal.ansiBlue'),
+    ansi_magenta: new vscode.ThemeColor('terminal.ansiMagenta'),
+    ansi_cyan: new vscode.ThemeColor('terminal.ansiCyan'),
+    ansi_white: new vscode.ThemeColor('terminal.ansiWhite'),
+  };
+  
+  private getOrCreateDecorationType(tag: string): vscode.TextEditorDecorationType {
+    if (this.decorationTypes.has(tag)) {
+      return this.decorationTypes.get(tag)!;
+    }
+    
+    let decorationOptions: vscode.DecorationRenderOptions = {};
+    
+    // Handle ANSI colors
+    if (this.ansiColorMap[tag]) {
+      decorationOptions.color = this.ansiColorMap[tag];
+    } else if (tag === 'ansi_dim') {
+      decorationOptions.opacity = '0.5';
+    } else if (tag === 'ansi_bold') {
+      decorationOptions.fontWeight = 'bold';
+    } else if (tag === 'ansi_underline') {
+      decorationOptions.textDecoration = 'underline';
+    }
+    
+    const decorationType = vscode.window.createTextEditorDecorationType(decorationOptions);
+    this.decorationTypes.set(tag, decorationType);
+    return decorationType;
   }
-
-  provideDocumentSemanticTokens(
-    document: vscode.TextDocument,
-    token: vscode.CancellationToken,
-  ): vscode.ProviderResult<vscode.SemanticTokens> {
-    const ranges = findInput({ document } as vscode.TextEditor);
+  
+  public updateDecorations(editor: vscode.TextEditor): void {
+    const ranges = findInput(editor);
     if (!ranges.status || !ranges.output) {
-      return new vscode.SemanticTokensBuilder(
-        TerminalSemanticTokensProvider.legend,
-      ).build();
+      return;
     }
 
     const statusResult = terminal.status();
     const outputResult = terminal.output();
-
-    const builder = new vscode.SemanticTokensBuilder(
-      TerminalSemanticTokensProvider.legend,
-    );
-
-    // Add tokens for status line
-    const statusStartOffset = document.offsetAt(ranges.status.start);
-    this.addTokensFromRanges(
-      builder,
-      document,
-      statusResult.ranges,
-      statusStartOffset,
-    );
-
-    // Add tokens for output
-    const outputStartOffset = document.offsetAt(ranges.output.start);
-    this.addTokensFromRanges(
-      builder,
-      document,
-      outputResult.ranges,
-      outputStartOffset,
-    );
-
-    return builder.build();
-  }
-
-  private addTokensFromRanges(
-    builder: vscode.SemanticTokensBuilder,
-    document: vscode.TextDocument,
-    ranges: HighlightRange[],
-    textStartOffset: number,
-  ) {
-    for (const range of ranges) {
-      // Convert relative range offsets to absolute document offsets
-      const absoluteStart = textStartOffset + range.start;
-      const absoluteEnd = textStartOffset + range.end;
-
-      // Convert to positions
-      const startPos = document.positionAt(absoluteStart);
-      const length = range.end - range.start;
-
-      const tokenType = this.mapTagToTokenType(range.tag);
-      if (tokenType !== undefined) {
-        builder.push(startPos.line, startPos.character, length, tokenType);
-      }
+    
+    // Group ranges by tag for efficient decoration
+    const rangesByTag = new Map<string, vscode.Range[]>();
+    
+    // Add status ranges
+    for (const highlightRange of statusResult.ranges) {
+      this.addRangeToMap(rangesByTag, highlightRange, ranges.status.start);
+    }
+    
+    // Add output ranges  
+    for (const highlightRange of outputResult.ranges) {
+      this.addRangeToMap(rangesByTag, highlightRange, ranges.output.start);
+    }
+    
+    // Apply decorations
+    for (const [tag, rangeList] of rangesByTag) {
+      const decorationType = this.getOrCreateDecorationType(tag);
+      editor.setDecorations(decorationType, rangeList);
     }
   }
-
-  private mapTagToTokenType(tag: string): number | undefined {
-    switch (tag) {
-      case "keyword":
-        return 0; // keyword
-      case "punctuation":
-        return 1; // operator
-      case "time":
-        return 3; // number
-      case "status_ok":
-        return 3; // number
-      case "status_err":
-        return 3; // number
-      case "path":
-        return 2; // string
-      case "error":
-        return 4;
-      // ANSI color and style mappings using VSCode builtin token types
-      // property
-      case "ansi_dim":
-        return 6; // comment (dim/faded text)
-      case "ansi_bold":
-        return 7; // type (bold text)
-      case "ansi_underline":
-        return 8; // decorator (underlined text)
-      case "ansi_red":
-        return 4; // property (red text)
-      case "ansi_green":
-        return 2; // string (green text)
-      case "ansi_yellow":
-        return 3; // number (yellow text)
-      case "ansi_blue":
-        return 0; // keyword (blue text)
-      case "ansi_magenta":
-        return 7; // type (magenta text)
-      case "ansi_cyan":
-        return 2; // string (cyan text)
-      case "ansi_white":
-        return 5; // variable (white text)
-      default:
-        return undefined;
+  
+  private addRangeToMap(
+    rangesByTag: Map<string, vscode.Range[]>, 
+    highlightRange: HighlightRange,
+    basePosition: vscode.Position
+  ): void {
+    // Convert relative range to absolute document range
+    const absoluteStartLine = basePosition.line + highlightRange.range.start.line;
+    const absoluteStartChar = highlightRange.range.start.line === 0
+      ? basePosition.character + highlightRange.range.start.character
+      : highlightRange.range.start.character;
+    const absoluteEndLine = basePosition.line + highlightRange.range.end.line;
+    const absoluteEndChar = highlightRange.range.end.line === 0
+      ? basePosition.character + highlightRange.range.end.character  
+      : highlightRange.range.end.character;
+      
+    const absoluteRange = new vscode.Range(
+      absoluteStartLine, absoluteStartChar,
+      absoluteEndLine, absoluteEndChar
+    );
+    
+    if (!rangesByTag.has(highlightRange.tag)) {
+      rangesByTag.set(highlightRange.tag, []);
     }
+    rangesByTag.get(highlightRange.tag)!.push(absoluteRange);
+  }
+  
+  public dispose(): void {
+    for (const decorationType of this.decorationTypes.values()) {
+      decorationType.dispose();
+    }
+    this.decorationTypes.clear();
   }
 }
+
 
 class EphemeralFileSystem implements vscode.FileSystemProvider {
   // In-memory storage for the current session

@@ -11,17 +11,16 @@ export interface TerminalEvents {
   onRuntimeUpdate?: () => void;
 }
 
+import * as vscode from "vscode";
+
 export interface HighlightRange {
-  start: number;
-  end: number;
+  range: vscode.Range;
   tag:
     | "keyword"
     | "punctuation"
     | "status_ok"
     | "status_err"
     | "time"
-    | "path"
-    | "error"
     | "ansi_dim"
     | "ansi_bold"
     | "ansi_underline"
@@ -32,6 +31,65 @@ export interface HighlightRange {
     | "ansi_magenta"
     | "ansi_cyan"
     | "ansi_white";
+}
+
+// Helper function to create HighlightRange from character offsets (single line)
+function createHighlightRange(line: number, start: number, end: number, tag: HighlightRange["tag"]): HighlightRange {
+  return {
+    range: new vscode.Range(line, start, line, end),
+    tag,
+  };
+}
+
+// Helper function to create HighlightRange from line/char positions (potentially multi-line)
+function createHighlightRangeFromPositions(
+  startLine: number,
+  startChar: number,
+  endLine: number,
+  endChar: number,
+  tag: HighlightRange["tag"]
+): HighlightRange {
+  return {
+    range: new vscode.Range(startLine, startChar, endLine, endChar),
+    tag,
+  };
+}
+
+// Helper function to adjust ranges when appending text
+function adjustRangesForAppendedText(ranges: HighlightRange[], baseText: string): HighlightRange[] {
+  if (baseText.length === 0) {
+    return ranges;
+  }
+  
+  // Count lines and get the character position of the last line
+  const lines = baseText.split('\n');
+  const lineOffset = lines.length - 1;
+  const charOffset = lines[lines.length - 1].length;
+  
+  return ranges.map((range) => ({
+    ...range,
+    range: new vscode.Range(
+      range.range.start.line + lineOffset,
+      range.range.start.line === 0 ? range.range.start.character + charOffset : range.range.start.character,
+      range.range.end.line + lineOffset,
+      range.range.end.line === 0 ? range.range.end.character + charOffset : range.range.end.character
+    ),
+  }));
+}
+
+// Helper function to filter and adjust ranges after line-based truncation
+function adjustRangesForLineTruncation(ranges: HighlightRange[], truncatedLines: number): HighlightRange[] {
+  return ranges
+    .filter((range) => range.range.start.line >= truncatedLines)
+    .map((range) => ({
+      ...range,
+      range: new vscode.Range(
+        range.range.start.line - truncatedLines,
+        range.range.start.character,
+        range.range.end.line - truncatedLines,
+        range.range.end.character
+      ),
+    }));
 }
 
 export interface TextWithRanges {
@@ -86,8 +144,8 @@ export class Terminal {
       return {
         text: "= =",
         ranges: [
-          { start: 0, end: 1, tag: "punctuation" },
-          { start: 2, end: 3, tag: "punctuation" },
+          createHighlightRange(0, 0, 1, "punctuation"),
+          createHighlightRange(0, 2, 3, "punctuation"),
         ],
       };
     }
@@ -104,43 +162,36 @@ export class Terminal {
     const ranges: HighlightRange[] = [];
 
     // Opening '='
-    ranges.push({ start: 0, end: 1, tag: "punctuation" });
+    ranges.push(createHighlightRange(0, 0, 1, "punctuation"));
 
     // 'time:' keyword
-    ranges.push({ start: 2, end: 7, tag: "keyword" });
+    ranges.push(createHighlightRange(0, 2, 7, "keyword"));
 
     // Runtime value
     const runtimeStart = 8;
     const runtimeEnd = runtimeStart + runtime.length;
-    ranges.push({ start: runtimeStart, end: runtimeEnd, tag: "time" });
+    ranges.push(createHighlightRange(0, runtimeStart, runtimeEnd, "time"));
 
     if (status) {
       // 'status:' keyword
       const statusKeywordStart = runtimeEnd + 1;
       const statusKeywordEnd = statusKeywordStart + 7;
-      ranges.push({
-        start: statusKeywordStart,
-        end: statusKeywordEnd,
-        tag: "keyword",
-      });
+      ranges.push(createHighlightRange(0, statusKeywordStart, statusKeywordEnd, "keyword"));
 
       // Status value
       const statusValueStart = statusKeywordEnd + 1;
       const statusValueEnd = statusValueStart +
         this.currentProcess.exitCode!.toString().length;
-      ranges.push({
-        start: statusValueStart,
-        end: statusValueEnd,
-        tag: this.currentProcess.exitCode === 0 ? "status_ok" : "status_err",
-      });
+      ranges.push(createHighlightRange(
+        0,
+        statusValueStart,
+        statusValueEnd,
+        this.currentProcess.exitCode === 0 ? "status_ok" : "status_err"
+      ));
     }
 
     // Closing '='
-    ranges.push({
-      start: text.length - 1,
-      end: text.length,
-      tag: "punctuation",
-    });
+    ranges.push(createHighlightRange(0, text.length - 1, text.length, "punctuation"));
 
     return { text, ranges };
   }
@@ -178,12 +229,8 @@ export class Terminal {
 
     const combinedText = stdoutResult.text + stderrResult.text;
 
-    // Adjust stderr ranges to account for stdout text length
-    const adjustedStderrRanges = stderrResult.ranges.map((range) => ({
-      ...range,
-      start: range.start + stdoutResult.text.length,
-      end: range.end + stdoutResult.text.length,
-    }));
+    // Adjust stderr ranges to account for stdout text
+    const adjustedStderrRanges = adjustRangesForAppendedText(stderrResult.ranges, stdoutResult.text);
 
     const combinedRanges = [...stdoutResult.ranges, ...adjustedStderrRanges];
 
@@ -205,22 +252,9 @@ export class Terminal {
         const limitedLines = lines.slice(-maxLines);
         text = limitedLines.join("\n");
 
-        // Calculate the character offset where truncation begins
-        const fullLines = combinedText.split("\n");
-        const truncatedLines = fullLines.length - maxLines;
-        let truncationOffset = 0;
-        for (let i = 0; i < truncatedLines; i++) {
-          truncationOffset += fullLines[i].length + 1; // +1 for newline
-        }
-
-        // Filter and adjust ranges that fall within the truncated text
-        ranges = combinedRanges
-          .filter((range) => range.start >= truncationOffset)
-          .map((range) => ({
-            ...range,
-            start: range.start - truncationOffset,
-            end: range.end - truncationOffset,
-          }));
+        // Filter and adjust ranges for the truncated lines
+        const truncatedLines = lines.length - maxLines;
+        ranges = adjustRangesForLineTruncation(combinedRanges, truncatedLines);
       }
     }
 
@@ -563,12 +597,13 @@ export class ANSIText {
 
   private processANSI(): void {
     let processed = "";
-    let currentPos = 0;
+    let currentLine = 0;
+    let currentChar = 0;
     const ansiRanges: HighlightRange[] = [];
 
     // Track current ANSI state
     let currentStyles: Set<string> = new Set();
-    let styleStartPositions: Map<string, number> = new Map();
+    let styleStartPositions: Map<string, { line: number; char: number }> = new Map();
 
     // Combined regex for both color codes and character set changes
     // \x1b[...m for colors, \x1b(...) for character sets
@@ -581,12 +616,23 @@ export class ANSIText {
     while ((match = ansiRegex.exec(this.rawInput)) !== null) {
       // Add text before this ANSI code, converting line drawing characters if needed
       const textBefore = this.rawInput.slice(lastIndex, match.index);
+      let processedTextBefore;
       if (inLineDrawingMode) {
-        processed += this.convertLineDrawingChars(textBefore);
+        processedTextBefore = this.convertLineDrawingChars(textBefore);
       } else {
-        processed += textBefore;
+        processedTextBefore = textBefore;
       }
-      currentPos += textBefore.length;
+      processed += processedTextBefore;
+      
+      // Update line/char positions based on processed text
+      for (let i = 0; i < processedTextBefore.length; i++) {
+        if (processedTextBefore[i] === '\n') {
+          currentLine++;
+          currentChar = 0;
+        } else {
+          currentChar++;
+        }
+      }
 
       if (match[1] !== undefined) {
         // Color escape sequence \x1b[...m
@@ -596,7 +642,8 @@ export class ANSIText {
             code,
             currentStyles,
             styleStartPositions,
-            currentPos,
+            currentLine,
+            currentChar,
             ansiRanges,
           );
         }
@@ -615,22 +662,27 @@ export class ANSIText {
 
     // Add remaining text after last ANSI code
     const remainingText = this.rawInput.slice(lastIndex);
+    let processedRemainingText;
     if (inLineDrawingMode) {
-      processed += this.convertLineDrawingChars(remainingText);
+      processedRemainingText = this.convertLineDrawingChars(remainingText);
     } else {
-      processed += remainingText;
+      processedRemainingText = remainingText;
     }
-    currentPos += remainingText.length;
+    processed += processedRemainingText;
+    
+    // Update line/char positions for remaining text
+    for (let i = 0; i < processedRemainingText.length; i++) {
+      if (processedRemainingText[i] === '\n') {
+        currentLine++;
+        currentChar = 0;
+      } else {
+        currentChar++;
+      }
+    }
 
     // Close any remaining open styles
     for (const [style, startPos] of styleStartPositions) {
-      if (startPos < currentPos) {
-        ansiRanges.push({
-          start: startPos,
-          end: currentPos,
-          tag: this.styleToTag(style),
-        });
-      }
+      ansiRanges.push(createHighlightRangeFromPositions(startPos.line, startPos.char, currentLine, currentChar, style as HighlightRange["tag"]));
     }
 
     this.resultingText = processed;
@@ -672,21 +724,22 @@ export class ANSIText {
   private processANSICode(
     code: number,
     currentStyles: Set<string>,
-    styleStartPositions: Map<string, number>,
-    currentPos: number,
+    styleStartPositions: Map<string, { line: number; char: number }>,
+    currentLine: number,
+    currentChar: number,
     ansiRanges: HighlightRange[],
   ): void {
     // Close existing ranges when style changes
     const closeStyle = (style: string) => {
       if (styleStartPositions.has(style)) {
         const startPos = styleStartPositions.get(style)!;
-        if (startPos < currentPos) {
-          ansiRanges.push({
-            start: startPos,
-            end: currentPos,
-            tag: this.styleToTag(style),
-          });
-        }
+        ansiRanges.push(createHighlightRangeFromPositions(
+          startPos.line,
+          startPos.char,
+          currentLine,
+          currentChar,
+          style as HighlightRange["tag"]
+        ));
         styleStartPositions.delete(style);
         currentStyles.delete(style);
       }
@@ -695,7 +748,7 @@ export class ANSIText {
     const openStyle = (style: string) => {
       if (!currentStyles.has(style)) {
         currentStyles.add(style);
-        styleStartPositions.set(style, currentPos);
+        styleStartPositions.set(style, { line: currentLine, char: currentChar });
       }
     };
 
@@ -706,27 +759,28 @@ export class ANSIText {
         }
         break;
       case 1: // Bold
-        openStyle("bold");
+        openStyle("ansi_bold");
         break;
       case 2: // Dim
-        openStyle("dim");
+        openStyle("ansi_dim");
         break;
       case 4: // Underline
-        openStyle("underline");
+        openStyle("ansi_underline");
         break;
       case 22: // Normal intensity (turn off bold/dim)
-        closeStyle("bold");
-        closeStyle("dim");
+        closeStyle("ansi_bold");
+        closeStyle("ansi_dim");
         break;
       case 24: // No underline
-        closeStyle("underline");
+        closeStyle("ansi_underline");
         break;
       case 30: // Black (foreground)
         // Close existing color styles
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
         break;
@@ -734,70 +788,78 @@ export class ANSIText {
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
-        openStyle("red");
+        openStyle("ansi_red");
         break;
       case 32: // Green
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
-        openStyle("green");
+        openStyle("ansi_green");
         break;
       case 33: // Yellow
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
-        openStyle("yellow");
+        openStyle("ansi_yellow");
         break;
       case 34: // Blue
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
-        openStyle("blue");
+        openStyle("ansi_blue");
         break;
       case 35: // Magenta
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
-        openStyle("magenta");
+        openStyle("ansi_magenta");
         break;
       case 36: // Cyan
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
-        openStyle("cyan");
+        openStyle("ansi_cyan");
         break;
       case 37: // White
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
-        openStyle("white");
+        openStyle("ansi_white");
         break;
       case 39: // Default foreground color
         this.closeColorStyles(
           currentStyles,
           styleStartPositions,
-          currentPos,
+          currentLine,
+          currentChar,
           ansiRanges,
         );
         break;
@@ -806,59 +868,34 @@ export class ANSIText {
 
   private closeColorStyles(
     currentStyles: Set<string>,
-    styleStartPositions: Map<string, number>,
-    currentPos: number,
+    styleStartPositions: Map<string, { line: number; char: number }>,
+    currentLine: number,
+    currentChar: number,
     ansiRanges: HighlightRange[],
   ): void {
     const colorStyles = [
-      "red",
-      "green",
-      "yellow",
-      "blue",
-      "magenta",
-      "cyan",
-      "white",
+      "ansi_red",
+      "ansi_green",
+      "ansi_yellow",
+      "ansi_blue",
+      "ansi_magenta",
+      "ansi_cyan",
+      "ansi_white",
     ];
     for (const color of colorStyles) {
       if (styleStartPositions.has(color)) {
         const startPos = styleStartPositions.get(color)!;
-        if (startPos < currentPos) {
-          ansiRanges.push({
-            start: startPos,
-            end: currentPos,
-            tag: this.styleToTag(color),
-          });
-        }
+        ansiRanges.push(createHighlightRangeFromPositions(
+          startPos.line,
+          startPos.char,
+          currentLine,
+          currentChar,
+          color as HighlightRange["tag"]
+        ));
         styleStartPositions.delete(color);
         currentStyles.delete(color);
       }
     }
   }
 
-  private styleToTag(style: string): HighlightRange["tag"] {
-    switch (style) {
-      case "dim":
-        return "ansi_dim";
-      case "bold":
-        return "ansi_bold";
-      case "underline":
-        return "ansi_underline";
-      case "red":
-        return "ansi_red";
-      case "green":
-        return "ansi_green";
-      case "yellow":
-        return "ansi_yellow";
-      case "blue":
-        return "ansi_blue";
-      case "magenta":
-        return "ansi_magenta";
-      case "cyan":
-        return "ansi_cyan";
-      case "white":
-        return "ansi_white";
-      default:
-        return "ansi_dim"; // fallback
-    }
-  }
 }
