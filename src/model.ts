@@ -32,9 +32,6 @@ export interface HighlightRange {
     | "ansi_magenta"
     | "ansi_cyan"
     | "ansi_white";
-  file?: string;
-  line?: number;
-  column?: number;
 }
 
 export interface TextWithRanges {
@@ -637,12 +634,7 @@ export class ANSIText {
     }
 
     this.resultingText = processed;
-
-    // Combine ANSI ranges with file path and error detection
-    this.ranges = [...ansiRanges, ...this.detectHighlightRanges(processed)];
-
-    // Sort ranges by start position to ensure proper ordering
-    this.ranges.sort((a, b) => a.start - b.start);
+    this.ranges = ansiRanges;
   }
 
   private convertLineDrawingChars(text: string): string {
@@ -868,47 +860,5 @@ export class ANSIText {
       default:
         return "ansi_dim"; // fallback
     }
-  }
-
-  private detectHighlightRanges(text: string): HighlightRange[] {
-    const ranges: HighlightRange[] = [];
-
-    // Pattern for file paths: capture file.ext:line:column (including absolute paths)
-    const filePathPattern = /([^\s:]+\.[a-zA-Z]+):(\d+):(\d+)/g;
-
-    // Pattern for error messages: "error:" (with colon) case insensitive
-    const errorPattern = /\berror\s*:/gi;
-
-    let match;
-
-    // Find file paths
-    while ((match = filePathPattern.exec(text)) !== null) {
-      const filePath = match[1];
-      const line = parseInt(match[2], 10);
-      const column = parseInt(match[3], 10);
-
-      ranges.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        tag: "path",
-        file: filePath,
-        line: line,
-        column: column,
-      });
-    }
-
-    // Reset regex lastIndex for error pattern
-    errorPattern.lastIndex = 0;
-
-    // Find error messages
-    while ((match = errorPattern.exec(text)) !== null) {
-      ranges.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        tag: "error",
-      });
-    }
-
-    return ranges;
   }
 }
