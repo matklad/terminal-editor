@@ -178,96 +178,106 @@ class FilePathDefinitionProvider implements vscode.DefinitionProvider {
 
 export class AnsiDecorationProvider {
   private decorationTypes = new Map<string, vscode.TextEditorDecorationType>();
-  
+
   // Map ANSI colors to VS Code terminal theme colors
   private ansiColorMap: Record<string, vscode.ThemeColor> = {
-    ansi_red: new vscode.ThemeColor('terminal.ansiRed'),
-    ansi_green: new vscode.ThemeColor('terminal.ansiGreen'),
-    ansi_yellow: new vscode.ThemeColor('terminal.ansiYellow'),
-    ansi_blue: new vscode.ThemeColor('terminal.ansiBlue'),
-    ansi_magenta: new vscode.ThemeColor('terminal.ansiMagenta'),
-    ansi_cyan: new vscode.ThemeColor('terminal.ansiCyan'),
-    ansi_white: new vscode.ThemeColor('terminal.ansiWhite'),
+    ansi_red: new vscode.ThemeColor("terminal.ansiRed"),
+    ansi_green: new vscode.ThemeColor("terminal.ansiGreen"),
+    ansi_yellow: new vscode.ThemeColor("terminal.ansiYellow"),
+    ansi_blue: new vscode.ThemeColor("terminal.ansiBlue"),
+    ansi_magenta: new vscode.ThemeColor("terminal.ansiMagenta"),
+    ansi_cyan: new vscode.ThemeColor("terminal.ansiCyan"),
+    ansi_white: new vscode.ThemeColor("terminal.ansiWhite"),
   };
-  
-  private getOrCreateDecorationType(tag: string): vscode.TextEditorDecorationType {
+
+  private getOrCreateDecorationType(
+    tag: string,
+  ): vscode.TextEditorDecorationType {
     if (this.decorationTypes.has(tag)) {
       return this.decorationTypes.get(tag)!;
     }
-    
+
     let decorationOptions: vscode.DecorationRenderOptions = {};
-    
+
     // Handle ANSI colors
     if (this.ansiColorMap[tag]) {
       decorationOptions.color = this.ansiColorMap[tag];
-    } else if (tag === 'ansi_dim') {
-      decorationOptions.opacity = '0.5';
-    } else if (tag === 'ansi_bold') {
-      decorationOptions.fontWeight = 'bold';
-    } else if (tag === 'ansi_underline') {
-      decorationOptions.textDecoration = 'underline';
+    } else if (tag === "ansi_dim") {
+      decorationOptions.opacity = "0.5";
+    } else if (tag === "ansi_bold") {
+      decorationOptions.fontWeight = "bold";
+    } else if (tag === "ansi_underline") {
+      decorationOptions.textDecoration = "underline";
     }
-    
-    const decorationType = vscode.window.createTextEditorDecorationType(decorationOptions);
+
+    const decorationType = vscode.window.createTextEditorDecorationType(
+      decorationOptions,
+    );
     this.decorationTypes.set(tag, decorationType);
     return decorationType;
   }
-  
+
   public updateDecorations(editor: vscode.TextEditor): void {
     const ranges = findInput(editor);
-    if (!ranges.status || !ranges.output) {
-      return;
-    }
 
-    const statusResult = terminal.status();
-    const outputResult = terminal.output();
-    
     // Group ranges by tag for efficient decoration
     const rangesByTag = new Map<string, vscode.Range[]>();
-    
+    for (const tag of this.decorationTypes.keys()) {
+      rangesByTag.set(tag, []);
+    }
+
     // Add status ranges
-    for (const highlightRange of statusResult.ranges) {
-      this.addRangeToMap(rangesByTag, highlightRange, ranges.status.start);
+    if (ranges.status) {
+      const statusResult = terminal.status();
+      for (const highlightRange of statusResult.ranges) {
+        this.addRangeToMap(rangesByTag, highlightRange, ranges.status.start);
+      }
     }
-    
-    // Add output ranges  
-    for (const highlightRange of outputResult.ranges) {
-      this.addRangeToMap(rangesByTag, highlightRange, ranges.output.start);
+
+    // Add output ranges
+    if (ranges.output) {
+      const outputResult = terminal.output();
+      for (const highlightRange of outputResult.ranges) {
+        this.addRangeToMap(rangesByTag, highlightRange, ranges.output.start);
+      }
     }
-    
+
     // Apply decorations
     for (const [tag, rangeList] of rangesByTag) {
       const decorationType = this.getOrCreateDecorationType(tag);
       editor.setDecorations(decorationType, rangeList);
     }
   }
-  
+
   private addRangeToMap(
-    rangesByTag: Map<string, vscode.Range[]>, 
+    rangesByTag: Map<string, vscode.Range[]>,
     highlightRange: HighlightRange,
-    basePosition: vscode.Position
+    basePosition: vscode.Position,
   ): void {
     // Convert relative range to absolute document range
-    const absoluteStartLine = basePosition.line + highlightRange.range.start.line;
+    const absoluteStartLine = basePosition.line +
+      highlightRange.range.start.line;
     const absoluteStartChar = highlightRange.range.start.line === 0
       ? basePosition.character + highlightRange.range.start.character
       : highlightRange.range.start.character;
     const absoluteEndLine = basePosition.line + highlightRange.range.end.line;
     const absoluteEndChar = highlightRange.range.end.line === 0
-      ? basePosition.character + highlightRange.range.end.character  
+      ? basePosition.character + highlightRange.range.end.character
       : highlightRange.range.end.character;
-      
+
     const absoluteRange = new vscode.Range(
-      absoluteStartLine, absoluteStartChar,
-      absoluteEndLine, absoluteEndChar
+      absoluteStartLine,
+      absoluteStartChar,
+      absoluteEndLine,
+      absoluteEndChar,
     );
-    
+
     if (!rangesByTag.has(highlightRange.tag)) {
       rangesByTag.set(highlightRange.tag, []);
     }
     rangesByTag.get(highlightRange.tag)!.push(absoluteRange);
   }
-  
+
   public dispose(): void {
     for (const decorationType of this.decorationTypes.values()) {
       decorationType.dispose();
@@ -275,7 +285,6 @@ export class AnsiDecorationProvider {
     this.decorationTypes.clear();
   }
 }
-
 
 class EphemeralFileSystem implements vscode.FileSystemProvider {
   // In-memory storage for the current session

@@ -34,7 +34,12 @@ export interface HighlightRange {
 }
 
 // Helper function to create HighlightRange from character offsets (single line)
-function createHighlightRange(line: number, start: number, end: number, tag: HighlightRange["tag"]): HighlightRange {
+function createHighlightRange(
+  line: number,
+  start: number,
+  end: number,
+  tag: HighlightRange["tag"],
+): HighlightRange {
   return {
     range: new vscode.Range(line, start, line, end),
     tag,
@@ -47,7 +52,7 @@ function createHighlightRangeFromPositions(
   startChar: number,
   endLine: number,
   endChar: number,
-  tag: HighlightRange["tag"]
+  tag: HighlightRange["tag"],
 ): HighlightRange {
   return {
     range: new vscode.Range(startLine, startChar, endLine, endChar),
@@ -56,29 +61,39 @@ function createHighlightRangeFromPositions(
 }
 
 // Helper function to adjust ranges when appending text
-function adjustRangesForAppendedText(ranges: HighlightRange[], baseText: string): HighlightRange[] {
+function adjustRangesForAppendedText(
+  ranges: HighlightRange[],
+  baseText: string,
+): HighlightRange[] {
   if (baseText.length === 0) {
     return ranges;
   }
-  
+
   // Count lines and get the character position of the last line
-  const lines = baseText.split('\n');
+  const lines = baseText.split("\n");
   const lineOffset = lines.length - 1;
   const charOffset = lines[lines.length - 1].length;
-  
+
   return ranges.map((range) => ({
     ...range,
     range: new vscode.Range(
       range.range.start.line + lineOffset,
-      range.range.start.line === 0 ? range.range.start.character + charOffset : range.range.start.character,
+      range.range.start.line === 0
+        ? range.range.start.character + charOffset
+        : range.range.start.character,
       range.range.end.line + lineOffset,
-      range.range.end.line === 0 ? range.range.end.character + charOffset : range.range.end.character
+      range.range.end.line === 0
+        ? range.range.end.character + charOffset
+        : range.range.end.character,
     ),
   }));
 }
 
 // Helper function to filter and adjust ranges after line-based truncation
-function adjustRangesForLineTruncation(ranges: HighlightRange[], truncatedLines: number): HighlightRange[] {
+function adjustRangesForLineTruncation(
+  ranges: HighlightRange[],
+  truncatedLines: number,
+): HighlightRange[] {
   return ranges
     .filter((range) => range.range.start.line >= truncatedLines)
     .map((range) => ({
@@ -87,7 +102,7 @@ function adjustRangesForLineTruncation(ranges: HighlightRange[], truncatedLines:
         range.range.start.line - truncatedLines,
         range.range.start.character,
         range.range.end.line - truncatedLines,
-        range.range.end.character
+        range.range.end.character,
       ),
     }));
 }
@@ -176,7 +191,14 @@ export class Terminal {
       // 'status:' keyword
       const statusKeywordStart = runtimeEnd + 1;
       const statusKeywordEnd = statusKeywordStart + 7;
-      ranges.push(createHighlightRange(0, statusKeywordStart, statusKeywordEnd, "keyword"));
+      ranges.push(
+        createHighlightRange(
+          0,
+          statusKeywordStart,
+          statusKeywordEnd,
+          "keyword",
+        ),
+      );
 
       // Status value
       const statusValueStart = statusKeywordEnd + 1;
@@ -186,12 +208,14 @@ export class Terminal {
         0,
         statusValueStart,
         statusValueEnd,
-        this.currentProcess.exitCode === 0 ? "status_ok" : "status_err"
+        this.currentProcess.exitCode === 0 ? "status_ok" : "status_err",
       ));
     }
 
     // Closing '='
-    ranges.push(createHighlightRange(0, text.length - 1, text.length, "punctuation"));
+    ranges.push(
+      createHighlightRange(0, text.length - 1, text.length, "punctuation"),
+    );
 
     return { text, ranges };
   }
@@ -230,7 +254,10 @@ export class Terminal {
     const combinedText = stdoutResult.text + stderrResult.text;
 
     // Adjust stderr ranges to account for stdout text
-    const adjustedStderrRanges = adjustRangesForAppendedText(stderrResult.ranges, stdoutResult.text);
+    const adjustedStderrRanges = adjustRangesForAppendedText(
+      stderrResult.ranges,
+      stdoutResult.text,
+    );
 
     const combinedRanges = [...stdoutResult.ranges, ...adjustedStderrRanges];
 
@@ -603,7 +630,8 @@ export class ANSIText {
 
     // Track current ANSI state
     let currentStyles: Set<string> = new Set();
-    let styleStartPositions: Map<string, { line: number; char: number }> = new Map();
+    let styleStartPositions: Map<string, { line: number; char: number }> =
+      new Map();
 
     // Combined regex for both color codes and character set changes
     // \x1b[...m for colors, \x1b(...) for character sets
@@ -623,10 +651,10 @@ export class ANSIText {
         processedTextBefore = textBefore;
       }
       processed += processedTextBefore;
-      
+
       // Update line/char positions based on processed text
       for (let i = 0; i < processedTextBefore.length; i++) {
-        if (processedTextBefore[i] === '\n') {
+        if (processedTextBefore[i] === "\n") {
           currentLine++;
           currentChar = 0;
         } else {
@@ -669,10 +697,10 @@ export class ANSIText {
       processedRemainingText = remainingText;
     }
     processed += processedRemainingText;
-    
+
     // Update line/char positions for remaining text
     for (let i = 0; i < processedRemainingText.length; i++) {
-      if (processedRemainingText[i] === '\n') {
+      if (processedRemainingText[i] === "\n") {
         currentLine++;
         currentChar = 0;
       } else {
@@ -682,7 +710,15 @@ export class ANSIText {
 
     // Close any remaining open styles
     for (const [style, startPos] of styleStartPositions) {
-      ansiRanges.push(createHighlightRangeFromPositions(startPos.line, startPos.char, currentLine, currentChar, style as HighlightRange["tag"]));
+      ansiRanges.push(
+        createHighlightRangeFromPositions(
+          startPos.line,
+          startPos.char,
+          currentLine,
+          currentChar,
+          style as HighlightRange["tag"],
+        ),
+      );
     }
 
     this.resultingText = processed;
@@ -738,7 +774,7 @@ export class ANSIText {
           startPos.char,
           currentLine,
           currentChar,
-          style as HighlightRange["tag"]
+          style as HighlightRange["tag"],
         ));
         styleStartPositions.delete(style);
         currentStyles.delete(style);
@@ -748,7 +784,10 @@ export class ANSIText {
     const openStyle = (style: string) => {
       if (!currentStyles.has(style)) {
         currentStyles.add(style);
-        styleStartPositions.set(style, { line: currentLine, char: currentChar });
+        styleStartPositions.set(style, {
+          line: currentLine,
+          char: currentChar,
+        });
       }
     };
 
@@ -890,12 +929,11 @@ export class ANSIText {
           startPos.char,
           currentLine,
           currentChar,
-          color as HighlightRange["tag"]
+          color as HighlightRange["tag"],
         ));
         styleStartPositions.delete(color);
         currentStyles.delete(color);
       }
     }
   }
-
 }
