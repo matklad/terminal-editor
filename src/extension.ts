@@ -13,6 +13,7 @@ interface DocumentRanges {
 }
 
 let terminal: Terminal;
+let ansiDecorationProvider: AnsiDecorationProvider;
 let syncRunning = false;
 export let syncPending = false;
 let syncCompletionResolvers: (() => void)[] = [];
@@ -43,6 +44,7 @@ export function resetForTesting() {
     createTerminalEvents(),
     getWorkspaceRoot(),
   );
+  ansiDecorationProvider = new AnsiDecorationProvider();
 }
 
 // Test helper function to get terminal instance
@@ -94,29 +96,8 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  const ansiDecorationProvider = new AnsiDecorationProvider();
+  ansiDecorationProvider = new AnsiDecorationProvider();
   context.subscriptions.push(ansiDecorationProvider);
-  
-  // Update decorations when editor changes
-  const updateActiveEditor = () => {
-    const editor = vscode.window.activeTextEditor;
-    if (editor && editor.document.uri.scheme === 'terminal-editor') {
-      ansiDecorationProvider.updateDecorations(editor);
-    }
-  };
-  
-  // Set up event listeners for decoration updates
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(updateActiveEditor),
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      if (event.document.uri.scheme === 'terminal-editor') {
-        updateActiveEditor();
-      }
-    })
-  );
-  
-  // Initial decoration update
-  updateActiveEditor();
 
   const definitionProvider = new FilePathDefinitionProvider();
   context.subscriptions.push(
@@ -548,6 +529,7 @@ async function doSync(editor: vscode.TextEditor) {
     const newContent = "\n\n" + terminal.status().text + "\n\n" +
       terminal.output().text;
     await editor.edit((edit) => edit.insert(ranges.command.end, newContent));
+    ansiDecorationProvider.updateDecorations(editor);
     return;
   }
 
@@ -560,6 +542,7 @@ async function doSync(editor: vscode.TextEditor) {
     const newContent = "\n\n" + terminal.status().text + "\n\n" +
       terminal.output().text;
     await editor.edit((edit) => edit.replace(fullRange, newContent));
+    ansiDecorationProvider.updateDecorations(editor);
     return;
   }
 
@@ -578,6 +561,7 @@ async function doSync(editor: vscode.TextEditor) {
     document.positionAt(document.getText().length),
   );
   await editor.edit((edit) => edit.replace(replaceRange, newContent));
+  ansiDecorationProvider.updateDecorations(editor);
 }
 
 async function reveal() {
