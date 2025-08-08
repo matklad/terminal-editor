@@ -14,6 +14,7 @@ interface DocumentRanges {
 
 let terminal: Terminal;
 let ansiDecorationProvider: AnsiDecorationProvider;
+let extensionContext: vscode.ExtensionContext;
 let syncRunning = false;
 export let syncPending = false;
 let syncCompletionResolvers: (() => void)[] = [];
@@ -43,6 +44,7 @@ export function resetForTesting() {
     new VSCodeTerminalSettings(),
     createTerminalEvents(),
     getWorkspaceRoot(),
+    [],
   );
   ansiDecorationProvider = new AnsiDecorationProvider();
 }
@@ -77,15 +79,27 @@ function createTerminalEvents(): TerminalEvents {
   };
 }
 
+function saveHistory(): void {
+  if (extensionContext) {
+    extensionContext.globalState.update("terminal-editor.history", terminal.getHistory());
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.log(
     'Congratulations, your extension "terminal-editor" is now active!',
   );
 
+  extensionContext = context;
+
+  // Load history from VS Code state
+  const savedHistory = context.globalState.get<string[]>("terminal-editor.history", []);
+
   terminal = new Terminal(
     new VSCodeTerminalSettings(),
     createTerminalEvents(),
     getWorkspaceRoot(),
+    savedHistory,
   );
 
   const fileSystemProvider = new EphemeralFileSystem();
@@ -127,6 +141,10 @@ export function activate(context: vscode.ExtensionContext) {
     "terminal-editor.tab",
     handleTab,
   );
+  const clearHistoryCommand = vscode.commands.registerCommand(
+    "terminal-editor.clearHistory",
+    clearHistory,
+  );
 
   context.subscriptions.push(
     revealCommand,
@@ -134,6 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
     dwimCommand,
     toggleFoldCommand,
     tabCommand,
+    clearHistoryCommand,
   );
 }
 
@@ -627,6 +646,9 @@ async function run() {
   // Start the process
   terminal.run(command);
 
+  // Save history to VS Code state
+  saveHistory();
+
   // Immediately sync to clear old result
   await sync(editor);
 }
@@ -681,4 +703,10 @@ function shouldToggleFoldOnTab(editor: vscode.TextEditor): boolean {
   const hasEllipsis = line.text.includes("...");
 
   return isStatusLine && hasEllipsis;
+}
+
+async function clearHistory() {
+  terminal.clearHistory();
+  saveHistory();
+  vscode.window.showInformationMessage("Terminal Editor: History cleared");
 }

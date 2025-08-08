@@ -143,15 +143,18 @@ export class Terminal {
   private events: TerminalEvents;
   private workingDirectory: string;
   private folded: boolean = true;
+  private history: string[] = [];
 
   constructor(
     settings: TerminalSettings,
     events: TerminalEvents = {},
     workingDirectory?: string,
+    initialHistory?: string[],
   ) {
     this.settings = settings;
     this.events = events;
     this.workingDirectory = workingDirectory || process.cwd();
+    this.history = initialHistory ? [...initialHistory] : [];
   }
 
   status(): TextWithRanges {
@@ -302,6 +305,9 @@ export class Terminal {
       return;
     }
 
+    // Save command to history
+    this.saveToHistory(commandString);
+
     this.folded = true;
 
     // Start new process
@@ -406,6 +412,26 @@ export class Terminal {
     const maxLines = this.settings.maxOutputLines();
 
     return lines.length > maxLines;
+  }
+
+  saveToHistory(command: string): void {
+    if (command.trim()) {
+      if (this.history.length > 0 && this.history[this.history.length - 1] === command) {
+        return;
+      }
+      this.history.push(command);
+      if (this.history.length > 128) {
+        this.history.shift();
+      }
+    }
+  }
+
+  getHistory(): string[] {
+    return [...this.history];
+  }
+
+  clearHistory(): void {
+    this.history = [];
   }
 }
 

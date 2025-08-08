@@ -44,6 +44,10 @@
       {
         "command": "terminal-editor.tab",
         "title": "Terminal Editor: Tab"
+      },
+      {
+        "command": "terminal-editor.clearHistory",
+        "title": "Terminal Editor: Clear History"
       }
     ],
     "keybindings": [
