@@ -342,6 +342,7 @@ export class Terminal {
           return;
         }
         processInfo.exitCode = (code === undefined) ? -1 : code;
+        processInfo.endTime = new Date();
         clearInterval(processInfo.runtimeUpdateInterval);
         this.events.onStateChange?.();
         completionResolve();
