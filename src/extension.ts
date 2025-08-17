@@ -749,6 +749,11 @@ async function reset(): Promise<void> {
 }
 
 async function waitForAsyncWork(): Promise<void> {
+  // First wait for any running processes to complete
+  if (terminal) {
+    await terminal.waitForCompletion();
+  }
+  
   if (!syncRunning && !syncPending) {
     return;
   }
