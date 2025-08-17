@@ -169,8 +169,10 @@ and see their output in the same file.
 
 ## Testing
 
-- [ ] All testing goes through snapshot mechanism for deterministic results
-- [ ] Tests that spawn external processes use `node -e` to avoid environment dependencies
+- [X] All testing goes through snapshot mechanism for deterministic results
+- [X] Tests that spawn external processes use `node -e` to avoid environment dependencies
+- [X] There's only one synchronization mechanism for test, the `sync` function. No test uses ad-hoc
+      sleeps.
 - [X] Extension exports testing object with three functions for test automation
 - [X] `reset()` function fully resets extension and editor state
   - [X] Simulates deactivate/activate cycle

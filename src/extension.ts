@@ -769,13 +769,16 @@ function snapshot(want: string): void {
 function captureExtensionState(): string {
   const editor = visibleTerminal();
   const parts: string[] = [];
-
-  // Editor document text
+  
+  // Start with blank line for readability
+  parts.push("");
+  
+  // Editor document text (without prefix)
   if (editor) {
     const documentText = editor.document.getText();
-    parts.push(`document: ${JSON.stringify(documentText)}`);
+    parts.push(documentText);
   } else {
-    parts.push(`document: null`);
+    parts.push("null");
   }
 
   // Process status - check if we have a current process and its state
