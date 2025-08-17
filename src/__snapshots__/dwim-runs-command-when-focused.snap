@@ -1,5 +1,0 @@
-node -e "console.log('Hello World')"
-
-= time: 0s status: 0 =
-
-Hello World

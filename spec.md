@@ -8,7 +8,6 @@ and see their output in the same file.
 - [X] Extension consists of three main files:
   - `src/extension.ts` - VS Code integration and view layer
   - `src/model.ts` - Business logic and terminal state management
-  - `src/extension.tests.ts` - Test suite with snapshot testing
 
 ## File System Integration
 
@@ -144,14 +143,6 @@ and see their output in the same file.
 - [X] Supports relative and absolute paths
 - [X] Handles line:column navigation
 - [X] File path regex matches common extensions
-
-## Test Infrastructure
-
-- [X] Snapshot testing for output format verification
-- [X] `UPDATE_SNAPSHOTS=true npm run test` to update snapshots
-- [X] `SLOW_TESTS=true npm run test` for tests >500ms
-- [X] Helper functions for test commands (sleep, error, output generation)
-- [X] Test isolation with `resetForTesting()` function
 
 ## Process Management
 

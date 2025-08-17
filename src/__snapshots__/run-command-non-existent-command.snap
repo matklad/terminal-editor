@@ -1,5 +1,0 @@
-this-command-definitely-does-not-exist-12345
-
-= time: 0s status: 127 =
-
-spawn this-command-definitely-does-not-exist-12345 ENOENT
