@@ -166,3 +166,28 @@ and see their output in the same file.
 - [X] Cursor positioned at first line when created
 - [X] Custom language mode for syntax highlighting
 - [X] Keybinding for Tab key in terminal-editor files
+
+## Testing
+
+- [ ] Extension exports testing object with three functions for test automation
+- [ ] `reset()` function fully resets extension and editor state
+  - [ ] Simulates deactivate/activate cycle
+  - [ ] Clears all terminal state and history
+  - [ ] Closes any open terminal editors
+  - [ ] Resets global Terminal instance
+- [ ] `sync()` function waits for all in-flight async work to complete
+  - [ ] Waits for running processes to finish
+  - [ ] Waits for pending sync operations
+  - [ ] Waits for runtime update intervals
+- [ ] `snapshot()` function serializes complete extension state
+  - [ ] Returns human-readable string representation
+  - [ ] Compares against expected string argument
+  - [ ] Logs both actual and expected on failure
+  - [ ] Includes relevant state information:
+    - [ ] Current command text
+    - [ ] Process status (running/completed/none)
+    - [ ] Exit code and runtime if available
+    - [ ] Output content (respecting folded/full mode)
+    - [ ] Command history
+    - [ ] Fold state
+    - [ ] Settings values
