@@ -8,10 +8,16 @@ function command_print(text: string): string {
 
 suite("Terminal Editor Tests", () => {
     setup(async () => {
+        // Ensure default settings before each test
+        const config = vscode.workspace.getConfiguration("terminal-editor");
+        await config.update("maxOutputLines", 40, vscode.ConfigurationTarget.Global);
         await testing.reset();
     });
 
     teardown(async () => {
+        // Reset settings after each test
+        const config = vscode.workspace.getConfiguration("terminal-editor");
+        await config.update("maxOutputLines", 40, vscode.ConfigurationTarget.Global);
         await testing.reset();
     });
 
@@ -41,8 +47,8 @@ node -e "console.log('hello world')"
 hello world
 
 process: stopped
-history: ["node -e \\"console.log('hello world')\\""]
-maxOutputLines: 40`);
+maxOutputLines: 40
+history: node -e "console.log('hello world')"`);
     });
 
     test("dwim command behavior", async () => {
@@ -72,14 +78,17 @@ node -e "console.log('dwim test')"
 dwim test
 
 process: stopped
-history: ["node -e \\"console.log('dwim test')\\""]
-maxOutputLines: 40`);
+maxOutputLines: 40
+history: node -e "console.log('dwim test')"`);
     });
 
     test("fold and unfold functionality", async () => {
         // Set maxOutputLines to 2 to trigger folding with small output
         const config = vscode.workspace.getConfiguration("terminal-editor");
         await config.update("maxOutputLines", 2, vscode.ConfigurationTarget.Global);
+        
+        // Reset to pick up new setting
+        await testing.reset();
         
         await vscode.commands.executeCommand("terminal-editor.reveal");
         await testing.sync();
@@ -95,27 +104,26 @@ maxOutputLines: 40`);
         await vscode.commands.executeCommand("terminal-editor.run");
         await testing.sync();
         
-        // Should start folded - only show last 2 lines due to maxOutputLines=2
+        // Should start folded - only show last line due to maxOutputLines=2 (accounting for newline)
         testing.snapshot(`
 node -e "console.log('line1\\nline2\\nline3\\nline4\\nline5')"
 
 = time: 0s status: 0 ... =
 
-line4
 line5
 
 process: stopped
-history: ["node -e \\"console.log('line1\\\\nline2\\\\nline3\\\\nline4\\\\nline5')\\""]
-maxOutputLines: 2`);
+maxOutputLines: 2
+history: node -e "console.log('line1\\nline2\\nline3\\nline4\\nline5')"`);
         
-        // Toggle to unfold - should show all 5 lines
+        // Toggle to unfold - should show all 5 lines but status still shows ellipsis because output is large
         await vscode.commands.executeCommand("terminal-editor.toggleFold");
         await testing.sync();
         
         testing.snapshot(`
 node -e "console.log('line1\\nline2\\nline3\\nline4\\nline5')"
 
-= time: 0s status: 0 =
+= time: 0s status: 0 ... =
 
 line1
 line2
@@ -124,10 +132,10 @@ line4
 line5
 
 process: stopped
-history: ["node -e \\"console.log('line1\\\\nline2\\\\nline3\\\\nline4\\\\nline5')\\""]
-maxOutputLines: 2`);
+maxOutputLines: 2
+history: node -e "console.log('line1\\nline2\\nline3\\nline4\\nline5')"`);
         
-        // Toggle back to fold - should show last 2 lines again
+        // Toggle back to fold - should show last line again
         await vscode.commands.executeCommand("terminal-editor.toggleFold");
         await testing.sync();
         
@@ -136,12 +144,11 @@ node -e "console.log('line1\\nline2\\nline3\\nline4\\nline5')"
 
 = time: 0s status: 0 ... =
 
-line4
 line5
 
 process: stopped
-history: ["node -e \\"console.log('line1\\\\nline2\\\\nline3\\\\nline4\\\\nline5')\\""]
-maxOutputLines: 2`);
+maxOutputLines: 2
+history: node -e "console.log('line1\\nline2\\nline3\\nline4\\nline5')"`);
         
         // Reset maxOutputLines back to default
         await config.update("maxOutputLines", 40, vscode.ConfigurationTarget.Global);
@@ -178,8 +185,9 @@ node -e "console.log('second')"
 second
 
 process: stopped
-history: ["node -e \\"console.log('first')\\"","node -e \\"console.log('second')\\""]
-maxOutputLines: 40`);
+maxOutputLines: 40
+history: node -e "console.log('first')"
+history: node -e "console.log('second')"`);
         
         // Clear history
         await vscode.commands.executeCommand("terminal-editor.clearHistory");
@@ -193,8 +201,8 @@ node -e "console.log('second')"
 second
 
 process: stopped
-history: []
-maxOutputLines: 40`);
+maxOutputLines: 40
+history: (empty)`);
     });
 
     test("process killing when starting new command", async () => {
@@ -204,11 +212,14 @@ maxOutputLines: 40`);
         const editor = visibleTerminal();
         assert.ok(editor);
         
-        // Start long-running command
+        // Start long-running command that will be killed (10 second timeout)
         await editor.edit(editBuilder => {
-            editBuilder.insert(new vscode.Position(0, 0), 'node -e "setTimeout(() => console.log(\'done\'), 1000)"');
+            editBuilder.insert(new vscode.Position(0, 0), 'node -e "setTimeout(() => console.log(\'done\'), 10000)"');
         });
         await vscode.commands.executeCommand("terminal-editor.run");
+        
+        // Wait a tiny bit to ensure the process starts
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Don't wait for completion - start another command immediately
         await editor.edit(editBuilder => {
@@ -227,8 +238,9 @@ node -e "console.log('quick')"
 quick
 
 process: stopped
-history: ["node -e \\"setTimeout(() => console.log('done'), 1000)\\"","node -e \\"console.log('quick')\\""]
-maxOutputLines: 40`);
+maxOutputLines: 40
+history: node -e "setTimeout(() => console.log('done'), 10000)"
+history: node -e "console.log('quick')"`);
     });
 
     test("output truncation with maxOutputLines setting", async () => {

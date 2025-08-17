@@ -11,6 +11,36 @@ export interface TerminalEvents {
   onRuntimeUpdate?: () => void;
 }
 
+export interface TimeProvider {
+  now(): Date;
+}
+
+export class RealTimeProvider implements TimeProvider {
+  now(): Date {
+    return new Date();
+  }
+}
+
+export class FakeTimeProvider implements TimeProvider {
+  private currentTime: Date;
+
+  constructor(initialTime = new Date(2024, 0, 1, 0, 0, 0)) {
+    this.currentTime = new Date(initialTime);
+  }
+
+  now(): Date {
+    return new Date(this.currentTime);
+  }
+
+  advance(milliseconds: number): void {
+    this.currentTime = new Date(this.currentTime.getTime() + milliseconds);
+  }
+
+  setTime(time: Date): void {
+    this.currentTime = new Date(time);
+  }
+}
+
 import * as vscode from "vscode";
 
 export interface HighlightRange {
@@ -144,17 +174,20 @@ export class Terminal {
   private workingDirectory: string;
   private folded: boolean = true;
   private history: string[] = [];
+  private timeProvider: TimeProvider;
 
   constructor(
     settings: TerminalSettings,
     events: TerminalEvents = {},
     workingDirectory?: string,
     initialHistory?: string[],
+    timeProvider?: TimeProvider,
   ) {
     this.settings = settings;
     this.events = events;
     this.workingDirectory = workingDirectory || process.cwd();
     this.history = initialHistory ? [...initialHistory] : [];
+    this.timeProvider = timeProvider || new RealTimeProvider();
   }
 
   status(): TextWithRanges {
@@ -174,9 +207,9 @@ export class Terminal {
       : "";
 
     // Always display `...` for long output.
-    const ellipsis = this.outputLarge() ? "..." : "";
+    const ellipsis = this.outputLarge() ? " ..." : "";
 
-    const text = `= time: ${runtime}${status} ${ellipsis}=`;
+    const text = `= time: ${runtime}${status}${ellipsis} =`;
     const ranges: HighlightRange[] = [];
 
     // Opening '='
@@ -229,7 +262,7 @@ export class Terminal {
     }
 
     // Use endTime if process has finished, otherwise use current time
-    const endTime = this.currentProcess.endTime || new Date();
+    const endTime = this.currentProcess.endTime || this.timeProvider.now();
 
     const durationMs = endTime.getTime() -
       this.currentProcess.startTime.getTime();
@@ -327,7 +360,7 @@ export class Terminal {
 
     const processInfo: ProcessInfo = {
       process,
-      startTime: new Date(),
+      startTime: this.timeProvider.now(),
       exitCode: undefined,
       stdout: new ANSIText(),
       stderr: new ANSIText(),
@@ -342,6 +375,7 @@ export class Terminal {
           return;
         }
         processInfo.exitCode = (code === undefined) ? -1 : code;
+        processInfo.endTime = this.timeProvider.now();
         clearInterval(processInfo.runtimeUpdateInterval);
         this.events.onStateChange?.();
         completionResolve();

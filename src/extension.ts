@@ -4,6 +4,7 @@ import {
   Terminal,
   TerminalEvents,
   TerminalSettings,
+  FakeTimeProvider,
 } from "./model";
 
 interface DocumentRanges {
@@ -40,11 +41,13 @@ export function resetForTesting() {
   syncRunning = false;
   syncPending = false;
   syncCompletionResolvers = [];
+  const fakeTime = new FakeTimeProvider();
   terminal = new Terminal(
     new VSCodeTerminalSettings(),
     createTerminalEvents(),
     getWorkspaceRoot(),
     [],
+    fakeTime,
   );
   ansiDecorationProvider = new AnsiDecorationProvider();
 }
@@ -738,11 +741,13 @@ async function reset(): Promise<void> {
   }
 
   // Create new terminal instance with empty history
+  const fakeTime = new FakeTimeProvider();
   terminal = new Terminal(
     new VSCodeTerminalSettings(),
     createTerminalEvents(),
     getWorkspaceRoot(),
-    []
+    [],
+    fakeTime
   );
 
   ansiDecorationProvider = new AnsiDecorationProvider();
@@ -793,17 +798,19 @@ function captureExtensionState(): string {
     parts.push(`process: stopped`);
   }
 
-  // Command history
-  const history = terminal.getHistory();
-  parts.push(`history: ${JSON.stringify(history)}`);
-
-  // Fold state
-  const isFolded = terminal.isFolded();
-  parts.push(`folded: ${isFolded}`);
-
   // Settings values
   const settings = new VSCodeTerminalSettings();
   parts.push(`maxOutputLines: ${settings.maxOutputLines()}`);
+
+  // Command history (last field, one item per line)
+  const history = terminal.getHistory();
+  if (history.length > 0) {
+    for (const command of history) {
+      parts.push(`history: ${command}`);
+    }
+  } else {
+    parts.push(`history: (empty)`);
+  }
 
   return parts.join('\n');
 }
