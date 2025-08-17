@@ -54,17 +54,6 @@ export function getTerminalForTesting(): Terminal {
   return terminal;
 }
 
-// Test helper function to wait for sync to complete
-export async function waitForSync(): Promise<void> {
-  if (!syncRunning && !syncPending) {
-    return;
-  }
-
-  return new Promise<void>((resolve) => {
-    syncCompletionResolvers.push(resolve);
-  });
-}
-
 function createTerminalEvents(): TerminalEvents {
   function syncIfVisible() {
     const editor = visibleTerminal();
@@ -709,4 +698,104 @@ async function clearHistory() {
   terminal.clearHistory();
   saveHistory();
   vscode.window.showInformationMessage("Terminal Editor: History cleared");
+}
+
+export const testing = {
+  reset,
+  sync: waitForAsyncWork,
+  snapshot,
+};
+
+async function reset(): Promise<void> {
+  // Wait for any ongoing operations to complete
+  await waitForAsyncWork();
+
+  // Close any open terminal editors
+  const terminalEditors = vscode.workspace.textDocuments.filter(doc =>
+    doc.uri.scheme === "terminal-editor"
+  );
+
+  for (const doc of terminalEditors) {
+    const editor = vscode.window.visibleTextEditors.find(e => e.document === doc);
+    if (editor) {
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  }
+
+  // Reset sync state
+  syncRunning = false;
+  syncPending = false;
+  syncCompletionResolvers = [];
+
+  // Recreate decoration provider
+  if (ansiDecorationProvider) {
+    ansiDecorationProvider.dispose();
+  }
+
+  // Clear history in VS Code global state
+  if (extensionContext) {
+    extensionContext.globalState.update("terminal-editor.history", []);
+  }
+
+  // Create new terminal instance with empty history
+  terminal = new Terminal(
+    new VSCodeTerminalSettings(),
+    createTerminalEvents(),
+    getWorkspaceRoot(),
+    []
+  );
+
+  ansiDecorationProvider = new AnsiDecorationProvider();
+}
+
+async function waitForAsyncWork(): Promise<void> {
+  if (!syncRunning && !syncPending) {
+    return;
+  }
+
+  return new Promise<void>((resolve) => {
+    syncCompletionResolvers.push(resolve);
+  });
+}
+
+function snapshot(want: string): void {
+  const got = captureExtensionState();
+
+  if (got.trim() !== want.trim()) {
+    throw new Error(`Snapshot mismatch:\n\nActual:\n${got}\n\nExpected:\n${want}`);
+  }
+}
+
+function captureExtensionState(): string {
+  const editor = visibleTerminal();
+  const parts: string[] = [];
+
+  // Editor document text
+  if (editor) {
+    const documentText = editor.document.getText();
+    parts.push(`document: ${JSON.stringify(documentText)}`);
+  } else {
+    parts.push(`document: null`);
+  }
+
+  // Process status - check if we have a current process and its state
+  if (terminal.isRunning()) {
+    parts.push(`process: running`);
+  } else {
+    parts.push(`process: stopped`);
+  }
+
+  // Command history
+  const history = terminal.getHistory();
+  parts.push(`history: ${JSON.stringify(history)}`);
+
+  // Fold state
+  const isFolded = terminal.isFolded();
+  parts.push(`folded: ${isFolded}`);
+
+  // Settings values
+  const settings = new VSCodeTerminalSettings();
+  parts.push(`maxOutputLines: ${settings.maxOutputLines()}`);
+
+  return parts.join('\n');
 }
