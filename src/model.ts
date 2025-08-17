@@ -3,6 +3,7 @@ import { ChildProcess, spawn } from "child_process";
 
 export interface TerminalSettings {
   maxOutputLines(): number;
+  workingDirectory(): string;
 }
 
 export interface TerminalEvents {
@@ -171,7 +172,6 @@ export class Terminal {
   private currentProcess?: ProcessInfo;
   private settings: TerminalSettings;
   private events: TerminalEvents;
-  private workingDirectory: string;
   private folded: boolean = true;
   private history: string[] = [];
   private timeProvider: TimeProvider;
@@ -179,13 +179,11 @@ export class Terminal {
   constructor(
     settings: TerminalSettings,
     events: TerminalEvents = {},
-    workingDirectory?: string,
     initialHistory?: string[],
     timeProvider?: TimeProvider,
   ) {
     this.settings = settings;
     this.events = events;
-    this.workingDirectory = workingDirectory || process.cwd();
     this.history = initialHistory ? [...initialHistory] : [];
     this.timeProvider = timeProvider || new RealTimeProvider();
   }
@@ -346,7 +344,7 @@ export class Terminal {
     // Start new process
     const [program, ...args] = parsed.tokens;
     const process = spawn(program, args, {
-      cwd: this.workingDirectory,
+      cwd: this.settings.workingDirectory(),
       env: {
         ...my_env,
         "CLICOLOR_FORCE": "1",

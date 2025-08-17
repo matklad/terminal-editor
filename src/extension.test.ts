@@ -319,4 +319,33 @@ history: node -e "console.log('quick')"`);
         const newOutputLines = newDocumentText.split('\n').filter(line => line.match(/^line\d+$/));
         assert.ok(newOutputLines.length <= 40, `Should truncate output when folded, got ${newOutputLines.length} lines`);
     });
+
+    test("working directory configuration", async () => {
+        // Test that commands run from the configured working directory
+        await vscode.commands.executeCommand("terminal-editor.reveal");
+        await testing.sync();
+        
+        const editor = visibleTerminal();
+        assert.ok(editor);
+        
+        // Run pwd command to check current working directory
+        await editor.edit(editBuilder => {
+            editBuilder.insert(new vscode.Position(0, 0), 'node -e "console.log(process.cwd())"');
+        });
+        
+        await vscode.commands.executeCommand("terminal-editor.run");
+        await testing.sync();
+        
+        // The output should contain the workspace root path
+        const documentText = editor.document.getText();
+        const outputLines = documentText.split('\n');
+        
+        // Find the output line (should be the directory path)
+        const workingDirLine = outputLines.find(line => 
+            line.includes('/') && !line.startsWith('=') && line.trim().length > 0
+        );
+        
+        assert.ok(workingDirLine, "Should show current working directory in output");
+        assert.ok(workingDirLine.includes('terminal-editor'), "Working directory should be the workspace root");
+    });
 });

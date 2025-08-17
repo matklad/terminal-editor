@@ -25,6 +25,17 @@ class VSCodeTerminalSettings implements TerminalSettings {
     const config = vscode.workspace.getConfiguration("terminal-editor");
     return config.get<number>("maxOutputLines", 40);
   }
+
+  workingDirectory(): string {
+    const config = vscode.workspace.getConfiguration("terminal-editor");
+    const configuredDir = config.get<string>("workingDirectory", "");
+    
+    if (configuredDir.trim() !== "") {
+      return configuredDir;
+    }
+    
+    return getWorkspaceRoot();
+  }
 }
 
 function getWorkspaceRoot(): string {
@@ -45,7 +56,6 @@ export function resetForTesting() {
   terminal = new Terminal(
     new VSCodeTerminalSettings(),
     createTerminalEvents(),
-    getWorkspaceRoot(),
     [],
     fakeTime,
   );
@@ -90,7 +100,6 @@ export function activate(context: vscode.ExtensionContext) {
   terminal = new Terminal(
     new VSCodeTerminalSettings(),
     createTerminalEvents(),
-    getWorkspaceRoot(),
     savedHistory,
   );
 
@@ -745,7 +754,6 @@ async function reset(): Promise<void> {
   terminal = new Terminal(
     new VSCodeTerminalSettings(),
     createTerminalEvents(),
-    getWorkspaceRoot(),
     [],
     fakeTime
   );

@@ -53,7 +53,7 @@ and see their output in the same file.
 
 - [X] At most one process can run at a time
 - [X] New process kills existing running process
-- [X] Working directory defaults to workspace root
+- [X] Working directory configurable via settings with workspace root fallback
 
 ## Command Parsing
 
@@ -147,7 +147,8 @@ and see their output in the same file.
 ## Process Management
 
 - [X] Spawns processes with `CLICOLOR_FORCE=1` for ANSI output
-- [X] Uses workspace root as working directory
+- [X] Working directory configurable via `terminal-editor.workingDirectory` setting
+- [X] Defaults to workspace root when setting is empty or invalid
 - [X] Handles spawn errors (command not found)
 - [X] Captures both stdout and stderr
 - [X] Process cleanup on extension deactivation
@@ -156,6 +157,7 @@ and see their output in the same file.
 ## Settings Integration
 
 - [X] `terminal-editor.maxOutputLines` configuration setting
+- [X] `terminal-editor.workingDirectory` configuration setting
 - [X] Settings abstracted through `TerminalSettings` interface
 - [X] VS Code adapter pattern for settings access
 
