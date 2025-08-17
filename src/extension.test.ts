@@ -45,68 +45,6 @@ interface DecodedToken {
   expectedType: string;
 }
 
-function decodeSemanticTokens(
-  document: vscode.TextDocument,
-  tokens: vscode.SemanticTokens,
-  legend: vscode.SemanticTokensLegend,
-): DecodedToken[] {
-  const decoded: DecodedToken[] = [];
-  const data = tokens.data;
-
-  let line = 0;
-  let character = 0;
-
-  // Semantic tokens are encoded as [deltaLine, deltaChar, length, tokenType, tokenModifiers]
-  for (let i = 0; i < data.length; i += 5) {
-    const deltaLine = data[i];
-    const deltaChar = data[i + 1];
-    const length = data[i + 2];
-    const tokenType = data[i + 3];
-
-    // Update position - VSCode semantic tokens use delta encoding
-    if (deltaLine > 0) {
-      line += deltaLine;
-      character = deltaChar; // Reset character to delta when line changes
-    } else {
-      character += deltaChar; // Add to character when staying on same line
-    }
-
-    // Ensure we don't go out of bounds
-    if (line >= document.lineCount) {
-      console.warn(
-        `Token line ${line} is out of bounds (document has ${document.lineCount} lines)`,
-      );
-      continue;
-    }
-
-    const lineText = document.lineAt(line).text;
-    if (character >= lineText.length || character + length > lineText.length) {
-      console.warn(
-        `Token at ${line}:${character} length ${length} is out of bounds for line: "${lineText}"`,
-      );
-      continue;
-    }
-
-    // Extract the actual text from the document
-    const startPos = new vscode.Position(line, character);
-    const endPos = new vscode.Position(line, character + length);
-    const tokenText = document.getText(new vscode.Range(startPos, endPos));
-
-    const expectedType = legend.tokenTypes[tokenType] || `unknown-${tokenType}`;
-
-    decoded.push({
-      line,
-      character,
-      length,
-      tokenType,
-      tokenText,
-      expectedType,
-    });
-  }
-
-  return decoded;
-}
-
 // Helper functions for common test commands using node -e
 function manyLinesCommand(lineCount: number): string {
   return `node -e "for(let i = 1; i <= ${lineCount}; i++) console.log('Line ' + i)"`;
@@ -219,10 +157,10 @@ suite("Terminal Configuration", () => {
     const maxLines = 5;
     const mockSettings: TerminalSettings = { maxOutputLines: () => maxLines };
     const terminal = new Terminal(mockSettings);
-    
+
     terminal.run(manyLinesCommand(20));
     await terminal.waitForCompletion();
-    
+
     const output = terminal.output();
     const lines = output.text.split("\n").filter((line) => line.trim() !== "");
     assert.ok(lines.length <= maxLines, `Got ${lines.length} lines, expected at most ${maxLines}`);
@@ -232,7 +170,7 @@ suite("Terminal Configuration", () => {
     const errorTerminal = new Terminal(mockSettings);
     errorTerminal.run("this-command-definitely-does-not-exist-12345");
     await errorTerminal.waitForCompletion();
-    
+
     const status = errorTerminal.status();
     assert.ok(status.text.includes("status: 127"), "Should show exit code 127 for non-existent command");
 
@@ -240,7 +178,7 @@ suite("Terminal Configuration", () => {
     const wdTerminal = new Terminal(mockSettings, {}, "/tmp");
     wdTerminal.run("pwd");
     await wdTerminal.waitForCompletion();
-    
+
     const wdOutput = wdTerminal.output();
     assert.ok(wdOutput.text.includes("/tmp"), "Should respect working directory");
   });
