@@ -169,6 +169,8 @@ and see their output in the same file.
 
 ## Testing
 
+- [ ] All testing goes through snapshot mechanism for deterministic results
+- [ ] Tests that spawn external processes use `node -e` to avoid environment dependencies
 - [ ] Extension exports testing object with three functions for test automation
 - [ ] `reset()` function fully resets extension and editor state
   - [ ] Simulates deactivate/activate cycle
@@ -179,10 +181,13 @@ and see their output in the same file.
   - [ ] Waits for running processes to finish
   - [ ] Waits for pending sync operations
   - [ ] Waits for runtime update intervals
-- [ ] `snapshot()` function serializes complete extension state
-  - [ ] Returns human-readable string representation
-  - [ ] Compares against expected string argument
-  - [ ] Logs both actual and expected on failure
+- [ ] `snapshot(want: string)` function captures and compares extension state
+  - [ ] Takes expected snapshot as string parameter
+  - [ ] Serializes complete extension state to human-readable string
+  - [ ] Compares actual state against expected `want` parameter
+  - [ ] Throws error with both actual and expected content on mismatch
+  - [ ] Uses inline snapshots only - no external files
+  - [ ] No automatic update logic - user manually updates snapshots
   - [ ] Includes relevant state information:
     - [ ] Current command text
     - [ ] Process status (running/completed/none)
