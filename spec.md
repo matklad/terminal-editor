@@ -171,28 +171,28 @@ and see their output in the same file.
 
 - [ ] All testing goes through snapshot mechanism for deterministic results
 - [ ] Tests that spawn external processes use `node -e` to avoid environment dependencies
-- [ ] Extension exports testing object with three functions for test automation
-- [ ] `reset()` function fully resets extension and editor state
-  - [ ] Simulates deactivate/activate cycle
-  - [ ] Clears all terminal state and history
-  - [ ] Closes any open terminal editors
-  - [ ] Resets global Terminal instance
-- [ ] `sync()` function waits for all in-flight async work to complete
-  - [ ] Waits for running processes to finish
-  - [ ] Waits for pending sync operations
-  - [ ] Waits for runtime update intervals
-- [ ] `snapshot(want: string)` function captures and compares extension state
-  - [ ] Takes expected snapshot as string parameter
-  - [ ] Serializes complete extension state to human-readable string
-  - [ ] Compares actual state against expected `want` parameter
-  - [ ] Throws error with both actual and expected content on mismatch
-  - [ ] Uses inline snapshots only - no external files
-  - [ ] No automatic update logic - user manually updates snapshots
-  - [ ] Includes relevant state information:
-    - [ ] Current command text
-    - [ ] Process status (running/completed/none)
-    - [ ] Exit code and runtime if available
-    - [ ] Output content (respecting folded/full mode)
-    - [ ] Command history
-    - [ ] Fold state
-    - [ ] Settings values
+- [X] Extension exports testing object with three functions for test automation
+- [X] `reset()` function fully resets extension and editor state
+  - [X] Simulates deactivate/activate cycle
+  - [X] Clears all terminal state and history
+  - [X] Closes any open terminal editors
+  - [X] Resets global Terminal instance
+- [X] `sync()` function waits for all in-flight async work to complete
+  - [X] Waits for running processes to finish
+  - [X] Waits for pending sync operations
+  - [X] Waits for runtime update intervals
+- [X] `snapshot(want: string)` function captures and compares extension state
+  - [X] Takes expected snapshot as string parameter
+  - [X] Serializes complete extension state to human-readable string
+  - [X] Compares actual state against expected `want` parameter
+  - [X] Throws error with both actual and expected content on mismatch
+  - [X] Uses inline snapshots only - no external files
+  - [X] No automatic update logic - user manually updates snapshots
+  - [X] Includes relevant state information:
+    - [X] Current command text
+    - [X] Process status (running/completed/none)
+    - [X] Exit code and runtime if available
+    - [X] Output content (respecting folded/full mode)
+    - [X] Command history
+    - [X] Fold state
+    - [X] Settings values
