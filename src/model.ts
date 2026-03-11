@@ -1,4 +1,4 @@
-import { env as my_env } from "process";
+import { env as my_env, kill } from "process";
 import { ChildProcess, spawn } from "child_process";
 
 export interface TerminalSettings {
@@ -294,7 +294,13 @@ export class Terminal {
   run(commandString: string): void {
     // Kill existing process if running and stop runtime updates
     if (this.currentProcess) {
-      this.currentProcess.process.kill("SIGKILL");
+      const pid = this.currentProcess.process.pid;
+      if (pid) {
+        kill(-pid, "SIGKILL");
+      } else {
+        this.currentProcess.process.kill("SIGKILL");
+      }
+
       this.currentProcess.cleanup(-1);
       this.currentProcess = undefined;
     }
@@ -313,6 +319,7 @@ export class Terminal {
     // Start new process
     const [program, ...args] = parsed.tokens;
     const process = spawn(program, args, {
+      detached: true,
       cwd: this.workingDirectory,
       env: {
         ...my_env,
