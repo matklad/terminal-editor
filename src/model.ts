@@ -295,12 +295,12 @@ export class Terminal {
     // Kill existing process if running and stop runtime updates
     if (this.currentProcess) {
       const pid = this.currentProcess.process.pid;
-      if (pid) {
-        kill(-pid, "SIGKILL");
-      } else {
+      try {
+        if (pid) {
+          kill(-pid, "SIGKILL");
+        }
         this.currentProcess.process.kill("SIGKILL");
-      }
-
+      } catch { }
       this.currentProcess.cleanup(-1);
       this.currentProcess = undefined;
     }
